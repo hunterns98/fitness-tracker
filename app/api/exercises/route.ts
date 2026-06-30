@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/exercises?template_id=xxx — lấy danh sách exercise (tuỳ chọn lọc theo template)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
