@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/sessions?limit=20&type=strength
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
