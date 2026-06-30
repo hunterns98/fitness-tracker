@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getIronSession, IronSessionData } from 'iron-session'
 import { SESSION_OPTIONS, checkPassword } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   const { password } = await req.json()
 
