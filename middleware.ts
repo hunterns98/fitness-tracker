@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getIronSession } from 'iron-session'
+import { getIronSession, IronSessionData } from 'iron-session'
 import { SESSION_OPTIONS } from '@/lib/auth'
 
 export async function middleware(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next()
-  const session = await getIronSession(request, response, SESSION_OPTIONS)
+  const session = await getIronSession<IronSessionData>(request, response, SESSION_OPTIONS)
 
   if (!session.authenticated) {
     const loginUrl = new URL('/login', request.url)
