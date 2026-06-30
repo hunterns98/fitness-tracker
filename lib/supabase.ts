@@ -1,10 +1,33 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// Server-side only — uses SERVICE ROLE KEY, never exposed to client
-const supabaseUrl = process.env.SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Lazy init — tránh lỗi lúc build khi env var chưa sẵn sàng ở build step.
+// Client chỉ thực sự được tạo khi có request gọi tới (runtime).
+let _supabase: SupabaseClient | null = null
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+function getSupabaseClient(): SupabaseClient {
+  if (_supabase) return _supabase
+
+  const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      'Thiếu SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY. ' +
+      'Kiểm tra lại Environment Variables trong Vercel dashboard.'
+    )
+  }
+
+  _supabase = createClient(supabaseUrl, supabaseKey)
+  return _supabase
+}
+
+// Proxy giữ nguyên cách dùng `supabase.from(...)` như cũ ở mọi nơi khác trong code
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseClient()
+    return (client as any)[prop]
+  },
+})
 
 // ---- Type definitions (mirror schema.sql) ----
 
