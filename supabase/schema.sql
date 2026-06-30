@@ -169,7 +169,7 @@ INSERT INTO workout_templates (id, name, type, run_type, target_pace, target_hr_
 
 -- Template 1: Ngực + Vai + Tay sau + Core
 INSERT INTO template_exercises (template_id, exercise_id, display_order)
-SELECT '11111111-1111-1111-1111-111111111111', id, n
+SELECT '11111111-1111-1111-1111-111111111111', exercises.id, t.ord
 FROM (VALUES
   ('Dumbbell Floor Press', 1),
   ('Dumbbell Shoulder Press', 2),
@@ -184,7 +184,7 @@ JOIN exercises ON exercises.name = t.n;
 
 -- Template 2: Lưng + Vai sau + Tay trước + Core
 INSERT INTO template_exercises (template_id, exercise_id, display_order)
-SELECT '22222222-2222-2222-2222-222222222222', id, n
+SELECT '22222222-2222-2222-2222-222222222222', exercises.id, t.ord
 FROM (VALUES
   ('Bent Over Dumbbell Row', 1),
   ('One Arm Dumbbell Row', 2),
@@ -199,7 +199,7 @@ JOIN exercises ON exercises.name = t.n;
 
 -- Template 3: Leg + Push phụ
 INSERT INTO template_exercises (template_id, exercise_id, display_order)
-SELECT '33333333-3333-3333-3333-333333333333', id, n
+SELECT '33333333-3333-3333-3333-333333333333', exercises.id, t.ord
 FROM (VALUES
   ('Goblet Squat', 1),
   ('Romanian Deadlift', 2),
