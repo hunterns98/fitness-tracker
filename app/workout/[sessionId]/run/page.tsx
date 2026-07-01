@@ -2,16 +2,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 
-type Session = {
-  id: string
-  template_id: string
-  workout_templates?: { name: string; run_type: string; target_pace: string; target_hr_range: string }
-}
-
 export default function RunWorkoutPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const router = useRouter()
-  const [session, setSession] = useState<Session | null>(null)
+  const [templateInfo, setTemplateInfo] = useState<{ name: string; target_pace?: string; target_hr_range?: string } | null>(null)
   const [form, setForm] = useState({
     hours: 0, minutes: 50, seconds: 0,
     distance: 7.0,
@@ -21,137 +15,149 @@ export default function RunWorkoutPage() {
     feeling_note: '',
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     fetch(`/api/sessions/${sessionId}`)
       .then(r => r.json())
-      .then(d => setSession(d.session))
+      .then(({ session }) => {
+        // Pre-populate nếu đã từng lưu
+        if (session.duration_seconds) {
+          const h = Math.floor(session.duration_seconds / 3600)
+          const m = Math.floor((session.duration_seconds % 3600) / 60)
+          const s = session.duration_seconds % 60
+          setForm({
+            hours: h, minutes: m, seconds: s,
+            distance: session.distance_km ?? 7.0,
+            avg_hr: session.avg_hr ?? 140,
+            max_hr: session.max_hr ?? 165,
+            calories: session.calories ?? 450,
+            feeling_note: session.feeling_note ?? '',
+          })
+        }
+        if (session.template_id) {
+          fetch(`/api/templates`)
+            .then(r => r.json())
+            .then((templates: { id: string; name: string; target_pace: string; target_hr_range: string }[]) => {
+              const t = templates.find((t) => t.id === session.template_id)
+              if (t) setTemplateInfo({ name: t.name, target_pace: t.target_pace, target_hr_range: t.target_hr_range })
+            })
+        }
+      })
   }, [sessionId])
 
-  function set(key: string, val: number | string) {
+  function setField(key: string, val: number | string) {
     setForm(f => ({ ...f, [key]: val }))
   }
 
   async function save() {
     setSaving(true)
+    setError('')
     const duration = form.hours * 3600 + form.minutes * 60 + form.seconds
     const pace = form.distance > 0 ? Math.round(duration / form.distance) : null
 
-    await fetch(`/api/sessions/${sessionId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        duration_seconds: duration,
-        distance_km: form.distance,
-        avg_pace_seconds: pace,
-        avg_hr: form.avg_hr,
-        max_hr: form.max_hr,
-        calories: form.calories,
-        feeling_note: form.feeling_note || null,
-      }),
-    })
-    router.push(`/summary/${sessionId}`)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          duration_seconds: duration,
+          distance_km: form.distance,
+          avg_pace_seconds: pace,
+          avg_hr: form.avg_hr,
+          max_hr: form.max_hr,
+          calories: form.calories,
+          feeling_note: form.feeling_note || null,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error ?? 'Lưu thất bại, thử lại')
+        setSaving(false)
+        return
+      }
+      router.push(`/summary/${sessionId}`)
+    } catch (e) {
+      setError('Lỗi kết nối, thử lại')
+      setSaving(false)
+    }
   }
 
-  function NumField({ label, value, onChange, step = 1, unit = '' }: {
-    label: string; value: number; onChange: (v: number) => void
-    step?: number; unit?: string
+  function NumField({ label, value, onChange, step = 1 }: {
+    label: string; value: number; onChange: (v: number) => void; step?: number
   }) {
     return (
       <div className="flex-1">
         <p className="text-xs text-gray-500 mb-1.5">{label}</p>
         <div className="flex items-center gap-2">
-          <button
-            className="step-btn"
-            onPointerDown={e => { e.preventDefault(); onChange(Math.max(0, value - step)) }}
-          >−</button>
-          <span className="flex-1 text-center font-semibold text-lg tabular-nums">
-            {value}{unit}
-          </span>
-          <button
-            className="step-btn"
-            onPointerDown={e => { e.preventDefault(); onChange(value + step) }}
-          >+</button>
+          <button className="step-btn" onPointerDown={e => { e.preventDefault(); onChange(Math.max(0, Math.round((value - step) * 10) / 10)) }}>−</button>
+          <span className="flex-1 text-center font-semibold text-lg tabular-nums">{value}</span>
+          <button className="step-btn" onPointerDown={e => { e.preventDefault(); onChange(Math.round((value + step) * 10) / 10) }}>+</button>
         </div>
       </div>
     )
   }
 
-  const template = (session as any)?.workout_templates
+  const paceDisplay = (() => {
+    const secs = form.hours * 3600 + form.minutes * 60 + form.seconds
+    if (!secs || !form.distance) return null
+    const pace = Math.round(secs / form.distance)
+    const m = Math.floor(pace / 60), s = pace % 60
+    return `${m}:${s.toString().padStart(2, '0')} /km`
+  })()
 
   return (
-    <div className="px-4 pt-6 pb-10 space-y-5">
+    <div className="px-4 pt-6 pb-10 space-y-4">
       <div>
-        <button onClick={() => router.back()} className="text-sm text-gray-500 mb-3">← Quay lại</button>
-        <h1 className="text-lg font-semibold">
-          {template?.name ?? 'Chạy bộ'}
-        </h1>
-        {template?.target_pace && (
+        <button onClick={() => router.back()} className="text-sm text-gray-500 mb-3 block">← Quay lại</button>
+        <h1 className="text-lg font-semibold">{templateInfo?.name ?? 'Chạy bộ'}</h1>
+        {templateInfo?.target_pace && (
           <p className="text-xs text-gray-500 mt-0.5">
-            Mục tiêu pace {template.target_pace} · HR {template.target_hr_range}
+            Mục tiêu pace {templateInfo.target_pace} · HR {templateInfo.target_hr_range}
           </p>
         )}
       </div>
 
-      {/* Thời gian */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-500 mb-3">Thời gian</p>
         <div className="flex gap-3">
-          <NumField label="Giờ" value={form.hours} onChange={v => set('hours', v)} />
-          <NumField label="Phút" value={form.minutes} onChange={v => set('minutes', v)} />
-          <NumField label="Giây" value={form.seconds} step={5} onChange={v => set('seconds', v)} />
+          <NumField label="Giờ" value={form.hours} onChange={v => setField('hours', v)} />
+          <NumField label="Phút" value={form.minutes} onChange={v => setField('minutes', v)} />
+          <NumField label="Giây" value={form.seconds} step={5} onChange={v => setField('seconds', v)} />
         </div>
       </div>
 
-      {/* Quãng đường */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-500 mb-3">Quãng đường</p>
-        <div className="flex gap-3">
-          <NumField label="km" value={form.distance} step={0.1}
-            onChange={v => set('distance', Math.round(v * 10) / 10)} />
-        </div>
-        {/* Pace tự tính */}
-        {form.distance > 0 && (() => {
-          const secs = form.hours * 3600 + form.minutes * 60 + form.seconds
-          const pace = Math.round(secs / form.distance)
-          const m = Math.floor(pace / 60), s = pace % 60
-          return (
-            <p className="text-xs text-sky-400 mt-2">
-              Pace: {m}:{s.toString().padStart(2, '0')} /km
-            </p>
-          )
-        })()}
+        <NumField label="km" value={form.distance} step={0.1} onChange={v => setField('distance', v)} />
+        {paceDisplay && <p className="text-xs text-sky-400 mt-2">Pace tự tính: {paceDisplay}</p>}
       </div>
 
-      {/* HR */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-500 mb-3">Nhịp tim</p>
         <div className="flex gap-3">
-          <NumField label="HR trung bình" value={form.avg_hr} onChange={v => set('avg_hr', v)} />
-          <NumField label="HR tối đa" value={form.max_hr} onChange={v => set('max_hr', v)} />
+          <NumField label="HR trung bình" value={form.avg_hr} onChange={v => setField('avg_hr', v)} />
+          <NumField label="HR tối đa" value={form.max_hr} onChange={v => setField('max_hr', v)} />
         </div>
       </div>
 
-      {/* Calo */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-500 mb-3">Calo</p>
-        <div className="flex gap-3">
-          <NumField label="kcal" value={form.calories} step={10} onChange={v => set('calories', v)} />
-        </div>
+        <NumField label="kcal" value={form.calories} step={10} onChange={v => setField('calories', v)} />
       </div>
 
-      {/* Cảm giác */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-500 mb-2">Cảm giác</p>
         <textarea
           value={form.feeling_note}
-          onChange={e => set('feeling_note', e.target.value)}
+          onChange={e => setField('feeling_note', e.target.value)}
           rows={2}
           placeholder="Cảm giác chạy hôm nay..."
-          className="w-full bg-transparent text-sm text-gray-300 placeholder-gray-700
-                     outline-none resize-none"
+          className="w-full bg-transparent text-sm text-gray-300 placeholder-gray-700 outline-none resize-none"
         />
       </div>
+
+      {error && <p className="text-sm text-red-400 text-center">{error}</p>}
 
       <button onClick={save} disabled={saving} className="btn-primary">
         {saving ? 'Đang lưu...' : 'Lưu buổi chạy'}
