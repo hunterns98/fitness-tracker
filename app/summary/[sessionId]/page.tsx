@@ -46,8 +46,7 @@ export default function SummaryPage() {
   const [editingSetId, setEditingSetId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<EditingSet>({ reps: 0, weight_kg: 0, rpe: null, note: '' })
   const [deleting, setDeleting] = useState(false)
-
-  async function deleteSession() {
+  const [savingSet, setSavingSet] = useState(false)
     if (!confirm('Xoá buổi tập này?')) return
     setDeleting(true)
     await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
