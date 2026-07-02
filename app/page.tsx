@@ -173,7 +173,7 @@ export default function HomePage() {
                 <span className="text-base">{TYPE_ICON[s.type] ?? '📋'}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-200 truncate">
-                    {s.name_override || s.workout_templates?.name || '—'}
+                    {s.name_override || (s as any).workout_templates?.name || '—'}
                   </p>
                   <p className="text-xs text-gray-600">{formatDate(s.date)}</p>
                 </div>
