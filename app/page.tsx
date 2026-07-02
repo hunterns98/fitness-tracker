@@ -81,12 +81,20 @@ export default function HomePage() {
           <h1 className="text-lg font-semibold">Hôm nay tập gì?</h1>
           <p className="text-sm text-gray-500">{formatDate(today)}</p>
         </div>
-        <button
-          onClick={logout}
-          className="text-xs text-gray-600 px-3 py-1.5 rounded-lg border border-gray-800"
-        >
-          Đăng xuất
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400"
+          >
+            📊 Dashboard
+          </button>
+          <button
+            onClick={logout}
+            className="text-xs text-gray-600 px-3 py-1.5 rounded-lg border border-gray-800"
+          >
+            Đăng xuất
+          </button>
+        </div>
       </div>
 
       {/* Kháng lực */}
