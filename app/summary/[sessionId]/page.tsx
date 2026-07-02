@@ -45,7 +45,14 @@ export default function SummaryPage() {
   const [loading, setLoading] = useState(true)
   const [editingSetId, setEditingSetId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<EditingSet>({ reps: 0, weight_kg: 0, rpe: null, note: '' })
-  const [savingSet, setSavingSet] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function deleteSession() {
+    if (!confirm('Xoá buổi tập này?')) return
+    setDeleting(true)
+    await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
+    router.push('/')
+  }
   // Chỉnh sửa buổi chạy
   const [editingRun, setEditingRun] = useState(false)
   const [runForm, setRunForm] = useState({ hours: 0, minutes: 0, seconds: 0, distance: 0, avg_hr: 0, max_hr: 0, calories: 0 })
@@ -247,6 +254,10 @@ export default function SummaryPage() {
       <div className="flex gap-3">
         <button onClick={() => router.push('/')} className="flex-1 btn-primary">Về trang chủ</button>
         <button onClick={() => router.push('/exercises')} className="btn-ghost">Bài tập</button>
+        <button onClick={deleteSession} disabled={deleting}
+          className="px-3 py-2.5 rounded-xl border border-red-900 text-red-500 text-sm active:bg-red-950 transition-colors">
+          🗑
+        </button>
       </div>
     </div>
   )
