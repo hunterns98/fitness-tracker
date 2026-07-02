@@ -12,8 +12,9 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('workout_sessions')
-    .select('*')
+    .select('*, workout_templates(name)')
     .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(limit)
 
   if (type) query = query.eq('type', type)
