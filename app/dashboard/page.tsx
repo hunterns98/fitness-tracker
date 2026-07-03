@@ -42,11 +42,23 @@ function EmptyState({ text }: { text: string }) {
 }
 
 // ─── Body Tab ─────────────────────────────────────────────────
-function BodyTab() {
+function BodyTab({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<BodyPoint[]>([])
-  useEffect(() => { fetch('/api/dashboard/body').then(r => r.json()).then(setData) }, [])
+  const [error, setError] = useState('')
 
-  if (!data.length) return <EmptyState text="Chưa có dữ liệu cơ thể. Nhập qua nút Ghi chép." />
+  useEffect(() => {
+    setError('')
+    fetch('/api/dashboard/body')
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setError(d.error); return }
+        setData(Array.isArray(d) ? d : [])
+      })
+      .catch(() => setError('Không thể tải dữ liệu'))
+  }, [refreshKey])
+
+  if (error) return <div className="card px-4 py-3 border-red-900 text-red-400 text-sm">{error}</div>
+  if (!data.length) return <EmptyState text="Chưa có dữ liệu cơ thể. Nhấn '+ Ghi chép' để nhập." />
 
   const latest = data[data.length - 1]
   const first = data[0]
@@ -306,11 +318,23 @@ function RunningTab() {
 }
 
 // ─── Recovery Tab ─────────────────────────────────────────────
-function RecoveryTab() {
+function RecoveryTab({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<RecoveryPoint[]>([])
-  useEffect(() => { fetch('/api/dashboard/recovery').then(r => r.json()).then(setData) }, [])
+  const [error, setError] = useState('')
 
-  if (!data.length) return <EmptyState text="Chưa có dữ liệu phục hồi. Nhập qua nút Ghi chép." />
+  useEffect(() => {
+    setError('')
+    fetch('/api/dashboard/recovery')
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setError(d.error); return }
+        setData(Array.isArray(d) ? d : [])
+      })
+      .catch(() => setError('Không thể tải dữ liệu'))
+  }, [refreshKey])
+
+  if (error) return <div className="card px-4 py-3 border-red-900 text-red-400 text-sm">{error}</div>
+  if (!data.length) return <EmptyState text="Chưa có dữ liệu phục hồi. Nhấn '+ Ghi chép' để nhập." />
 
   const latest = data[data.length - 1]
   const hrData = data.filter(d => d.resting_hr != null)
@@ -399,6 +423,7 @@ function RunTypeBadge({ label, count, color }: { label: string; count: number; c
 export default function DashboardPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('body')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: 'body', label: 'Cơ thể', icon: '⚖️' },
@@ -413,12 +438,15 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold">Dashboard</h1>
         <div className="flex gap-2">
+          <button onClick={() => setRefreshKey(k => k + 1)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400">
+            ↻ Tải lại
+          </button>
           <button onClick={() => router.push('/log')}
             className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400">
             + Ghi chép
           </button>
-          <button onClick={() => router.push('/')}
-            className="text-xs text-gray-500">← Trang chủ</button>
+          <button onClick={() => router.push('/')} className="text-xs text-gray-500">← Trang chủ</button>
         </div>
       </div>
 
@@ -434,10 +462,10 @@ export default function DashboardPage() {
       </div>
 
       {/* Tab content */}
-      {tab === 'body' && <BodyTab />}
+      {tab === 'body' && <BodyTab refreshKey={refreshKey} />}
       {tab === 'strength' && <StrengthTab />}
       {tab === 'running' && <RunningTab />}
-      {tab === 'recovery' && <RecoveryTab />}
+      {tab === 'recovery' && <RecoveryTab refreshKey={refreshKey} />}
     </div>
   )
 }
