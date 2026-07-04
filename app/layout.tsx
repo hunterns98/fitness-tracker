@@ -1,8 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Fitness Tracker',
@@ -14,14 +11,14 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#0ea5e9',
+  themeColor: '#0EA5E9',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
-      <body className={`${inter.className} bg-gray-950 text-gray-100 min-h-screen`}>
-        <div className="max-w-md mx-auto min-h-screen relative">
+      <body style={{ background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', position: 'relative' }}>
           {children}
         </div>
       </body>
