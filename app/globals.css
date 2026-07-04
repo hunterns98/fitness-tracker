@@ -4,18 +4,31 @@
 
 @layer base {
   :root {
-    --bg: #030712;
-    --surface: #111827;
-    --surface-2: #1f2937;
-    --border: #374151;
-    --text: #f9fafb;
-    --text-2: #9ca3af;
-    --text-3: #6b7280;
-    --brand: #0ea5e9;
-    --brand-dark: #0284c7;
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --danger: #ef4444;
+    --bg: #F0F4F8;
+    --surface: #FFFFFF;
+    --surface-2: #F8FAFC;
+    --border: #E2E8F0;
+    --border-strong: #CBD5E1;
+    --text: #1E293B;
+    --text-2: #64748B;
+    --text-3: #94A3B8;
+    --brand: #0EA5E9;
+    --brand-dark: #0284C7;
+    --brand-light: #E0F2FE;
+    --success: #16A34A;
+    --success-bg: #DCFCE7;
+    --warning: #D97706;
+    --warning-bg: #FEF3C7;
+    --danger: #DC2626;
+    --danger-bg: #FEE2E2;
+    --strength: #6366F1;
+    --strength-bg: #EEF2FF;
+    --run: #0EA5E9;
+    --run-bg: #E0F2FE;
+    --other: #F59E0B;
+    --other-bg: #FFFBEB;
+    --rest: #94A3B8;
+    --rest-bg: #F1F5F9;
   }
 
   * { box-sizing: border-box; }
@@ -24,46 +37,128 @@
     background: var(--bg);
     color: var(--text);
     -webkit-tap-highlight-color: transparent;
-  }
-
-  /* Số liệu lớn — trọng số cao, dùng cho reps/tạ */
-  .num {
-    @apply font-semibold text-xl tabular-nums;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
   }
 }
 
 @layer components {
-  /* Card nền */
+  /* Card */
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-2xl;
+    background: var(--surface);
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   }
 
-  /* Nút chính */
+  .card-sm {
+    background: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+
+  /* Buttons */
   .btn-primary {
-    @apply w-full py-3.5 rounded-xl bg-sky-500 text-white font-semibold
-           text-base active:bg-sky-600 transition-colors disabled:opacity-40;
+    @apply w-full py-3.5 rounded-2xl font-semibold text-base transition-all;
+    background: var(--brand);
+    color: white;
   }
+  .btn-primary:active { background: var(--brand-dark); transform: scale(0.98); }
+  .btn-primary:disabled { opacity: 0.4; }
 
-  /* Nút phụ */
   .btn-ghost {
-    @apply py-2.5 px-4 rounded-xl border border-gray-700 text-gray-300
-           text-sm active:bg-gray-800 transition-colors;
+    @apply py-2.5 px-4 rounded-xl text-sm font-medium transition-all;
+    background: var(--surface-2);
+    color: var(--text-2);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:active { background: var(--border); }
+
+  .btn-pill {
+    @apply px-4 py-2 rounded-full text-sm font-medium transition-all;
+    background: var(--surface-2);
+    color: var(--text-2);
+    border: 1px solid var(--border);
+  }
+  .btn-pill.active {
+    background: var(--brand);
+    color: white;
+    border-color: var(--brand);
   }
 
-  /* Stepper +/- */
+  /* Stepper */
   .step-btn {
-    @apply w-10 h-10 rounded-xl bg-gray-800 text-gray-100
-           flex items-center justify-center text-xl font-light
-           active:bg-gray-700 transition-colors select-none;
+    @apply w-10 h-10 rounded-xl flex items-center justify-center text-xl font-light select-none transition-all;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .step-btn:active { background: var(--border); transform: scale(0.95); }
+
+  /* Badges */
+  .badge-done {
+    @apply text-xs px-2.5 py-1 rounded-full font-medium;
+    background: var(--success-bg);
+    color: var(--success);
+  }
+  .badge-brand {
+    @apply text-xs px-2.5 py-1 rounded-full font-medium;
+    background: var(--brand-light);
+    color: var(--brand-dark);
+  }
+  .badge-warn {
+    @apply text-xs px-2.5 py-1 rounded-full font-medium;
+    background: var(--warning-bg);
+    color: var(--warning);
   }
 
-  /* Badge trạng thái */
-  .badge-done   { @apply text-xs px-2 py-0.5 rounded-full bg-green-900 text-green-400; }
-  .badge-active { @apply text-xs px-2 py-0.5 rounded-full bg-sky-900 text-sky-300; }
-  .badge-run    { @apply text-xs px-2 py-0.5 rounded-full bg-orange-900 text-orange-400; }
+  /* Input */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl text-sm outline-none transition-all;
+    background: var(--surface-2);
+    border: 1.5px solid var(--border);
+    color: var(--text);
+  }
+  .input:focus { border-color: var(--brand); }
+  .input::placeholder { color: var(--text-3); }
+
+  /* Section label */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wider;
+    color: var(--text-3);
+  }
+
+  /* Workout type cards */
+  .type-card-strength {
+    background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  }
+  .type-card-run {
+    background: linear-gradient(135deg, #0EA5E9, #06B6D4);
+  }
+  .type-card-other {
+    background: linear-gradient(135deg, #F59E0B, #F97316);
+  }
+  .type-card-rest {
+    background: linear-gradient(135deg, #94A3B8, #CBD5E1);
+  }
 }
 
-/* Prevent zoom on input focus (iOS) */
-input, select, textarea {
-  font-size: 16px !important;
+/* Prevent zoom on iOS */
+input, select, textarea { font-size: 16px !important; }
+
+/* Native date input styling */
+input[type="date"] {
+  color-scheme: light;
 }
+
+/* Smooth page transitions */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.2s ease-out; }
+
+/* Bottom sheet */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.slide-up { animation: slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1); }
