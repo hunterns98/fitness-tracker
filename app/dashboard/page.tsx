@@ -32,13 +32,18 @@ function sleepStr(min: number | null) {
 }
 
 // ─── Chart theme ──────────────────────────────────────────────
-const COLORS = { weight: '#38bdf8', fat: '#f59e0b', lean: '#34d399', waist: '#a78bfa', volume: '#60a5fa', weight2: '#f472b6', hr: '#f87171', sleep: '#a78bfa', km: '#34d399' }
-const tooltipStyle = { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }
-const axisStyle = { fill: '#6b7280', fontSize: 11 }
+const COLORS = { weight: '#0EA5E9', fat: '#F59E0B', lean: '#16A34A', waist: '#8B5CF6', volume: '#6366F1', weight2: '#EC4899', hr: '#EF4444', sleep: '#8B5CF6', km: '#16A34A' }
+const tooltipStyle = { backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, fontSize: 12, boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }
+const axisStyle = { fill: '#94A3B8', fontSize: 11 }
 
 // ─── Shared empty state ───────────────────────────────────────
 function EmptyState({ text }: { text: string }) {
-  return <div className="flex flex-col items-center justify-center py-16 text-gray-600 text-sm space-y-2"><span className="text-3xl">📊</span><p>{text}</p></div>
+  return (
+    <div className="card p-10 flex flex-col items-center gap-3 text-center">
+      <span className="text-4xl">📊</span>
+      <p className="text-sm" style={{ color: 'var(--text-3)' }}>{text}</p>
+    </div>
+  )
 }
 
 // ─── Body Tab ─────────────────────────────────────────────────
@@ -79,7 +84,8 @@ function BodyTab({ refreshKey }: { refreshKey: number }) {
 
       {/* Recomp indicator */}
       {weightDiff != null && fatDiff != null && (
-        <div className={`card px-4 py-3 text-sm ${weightDiff <= 0 && fatDiff <= 0 ? 'border-green-800 text-green-400' : 'border-gray-800 text-gray-400'}`}>
+        <div className="rounded-xl px-4 py-3 text-sm font-medium"
+          style={{ background: weightDiff <= 0 && fatDiff <= 0 ? 'var(--success-bg)' : 'var(--surface-2)', color: weightDiff <= 0 && fatDiff <= 0 ? 'var(--success)' : 'var(--text-3)' }}>
           {weightDiff <= 0 && fatDiff <= 0
             ? '✅ Body recomp đang diễn ra tốt — cân giảm, mỡ giảm'
             : '📈 Đang theo dõi xu hướng — tiếp tục ghi chép đều'}
@@ -191,8 +197,9 @@ function StrengthTab() {
           </div>
 
           {/* Progressive overload status */}
-          {prev && (
-            <div className={`card px-4 py-3 text-sm ${weightUp ? 'border-green-800 text-green-400' : volumeUp ? 'border-sky-800 text-sky-400' : 'border-gray-800 text-gray-500'}`}>
+          {canUp && (
+            <div className="rounded-xl px-4 py-3 text-sm font-medium"
+              style={{ background: weightUp ? 'var(--success-bg)' : volumeUp ? 'var(--brand-light)' : 'var(--surface-2)', color: weightUp ? 'var(--success)' : volumeUp ? 'var(--brand-dark)' : 'var(--text-3)' }}>
               {weightUp
                 ? `✅ Đã tăng tạ ${prev.maxWeight}kg → ${latest.maxWeight}kg`
                 : volumeUp
@@ -273,9 +280,9 @@ function RunningTab() {
       <div className="card p-4">
         <p className="text-xs text-gray-500 mb-3">Phân bổ buổi chạy tuần này</p>
         <div className="flex gap-3">
-          <RunTypeBadge label="Easy" count={latest.easy} color="bg-green-800 text-green-400" />
-          <RunTypeBadge label="Tempo" count={latest.tempo} color="bg-yellow-800 text-yellow-400" />
-          <RunTypeBadge label="Interval" count={latest.interval} color="bg-red-800 text-red-400" />
+          <RunTypeBadge label="Easy" count={latest.easy} bgColor="var(--success-bg)" textColor="var(--success)" />
+          <RunTypeBadge label="Tempo" count={latest.tempo} bgColor="var(--warning-bg)" textColor="var(--warning)" />
+          <RunTypeBadge label="Interval" count={latest.interval} bgColor="var(--danger-bg)" textColor="var(--danger)" />
         </div>
         {latest.easy >= 1 && latest.tempo >= 1 && (
           <p className="text-xs text-gray-500 mt-3">
@@ -390,13 +397,12 @@ function RecoveryTab({ refreshKey }: { refreshKey: number }) {
   )
 }
 
-// ─── Shared sub-components ────────────────────────────────────
 function StatCard({ label, value, sub, subColor }: { label: string; value: string; sub: string; subColor: string }) {
   return (
-    <div className="card px-4 py-3">
-      <p className="text-xs text-gray-600">{label}</p>
-      <p className="text-lg font-semibold text-gray-100 mt-0.5">{value}</p>
-      {sub && <p className={`text-xs mt-0.5 ${subColor}`}>{sub}</p>}
+    <div className="card-sm px-4 py-3">
+      <p className="text-xs" style={{ color: 'var(--text-3)' }}>{label}</p>
+      <p className="text-lg font-bold mt-0.5" style={{ color: 'var(--text)' }}>{value}</p>
+      {sub && <p className={`text-xs mt-0.5 font-medium ${subColor}`}>{sub}</p>}
     </div>
   )
 }
@@ -404,17 +410,17 @@ function StatCard({ label, value, sub, subColor }: { label: string; value: strin
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="card p-4">
-      <p className="text-xs font-medium text-gray-500 mb-3">{title}</p>
+      <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-3)' }}>{title}</p>
       {children}
     </div>
   )
 }
 
-function RunTypeBadge({ label, count, color }: { label: string; count: number; color: string }) {
+function RunTypeBadge({ label, count, bgColor, textColor }: { label: string; count: number; bgColor: string; textColor: string }) {
   return (
-    <div className={`flex-1 rounded-xl px-3 py-2 text-center ${color}`}>
-      <p className="text-lg font-semibold">{count}</p>
-      <p className="text-xs">{label}</p>
+    <div className="flex-1 rounded-xl px-3 py-2.5 text-center" style={{ background: bgColor }}>
+      <p className="text-xl font-bold" style={{ color: textColor }}>{count}</p>
+      <p className="text-xs font-medium mt-0.5" style={{ color: textColor }}>{label}</p>
     </div>
   )
 }
@@ -433,39 +439,56 @@ export default function DashboardPage() {
   ]
 
   return (
-    <div className="px-4 pt-6 pb-24">
+    <div className="min-h-screen pb-24" style={{ background: 'var(--bg)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-lg font-semibold">Dashboard</h1>
-        <div className="flex gap-2">
-          <button onClick={() => setRefreshKey(k => k + 1)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400">
-            ↻ Tải lại
-          </button>
-          <button onClick={() => router.push('/log')}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400">
-            + Ghi chép
-          </button>
-          <button onClick={() => router.push('/')} className="text-xs text-gray-500">← Trang chủ</button>
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}
+        className="px-4 py-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Dashboard</h1>
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/coach')}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white"
+              style={{ background: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }}>
+              🤖 AI Coach
+            </button>
+            <button onClick={() => setRefreshKey(k => k + 1)}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium"
+              style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+              ↻
+            </button>
+            <button onClick={() => router.push('/log')}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium"
+              style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+              + Log
+            </button>
+            <button onClick={() => router.push('/')} className="text-xs" style={{ color: 'var(--text-3)' }}>← Về</button>
+          </div>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex gap-1 mt-4 p-1 rounded-xl" style={{ background: 'var(--surface-2)' }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
+              style={{
+                background: tab === t.id ? 'var(--surface)' : 'transparent',
+                color: tab === t.id ? 'var(--brand)' : 'var(--text-3)',
+                boxShadow: tab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}>
+              <span className="block text-base">{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 p-1 bg-gray-900 rounded-xl mb-5">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${tab === t.id ? 'bg-gray-700 text-gray-100' : 'text-gray-500'}`}>
-            <span className="block">{t.icon}</span>
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-
       {/* Tab content */}
-      {tab === 'body' && <BodyTab refreshKey={refreshKey} />}
-      {tab === 'strength' && <StrengthTab />}
-      {tab === 'running' && <RunningTab />}
-      {tab === 'recovery' && <RecoveryTab refreshKey={refreshKey} />}
+      <div className="px-4 pt-4">
+        {tab === 'body' && <BodyTab refreshKey={refreshKey} />}
+        {tab === 'strength' && <StrengthTab />}
+        {tab === 'running' && <RunningTab />}
+        {tab === 'recovery' && <RecoveryTab refreshKey={refreshKey} />}
+      </div>
     </div>
   )
 }
