@@ -76,8 +76,8 @@ function BodyTab({ refreshKey }: { refreshKey: number }) {
     <div className="space-y-5">
       {/* Current stats */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Cân nặng" value={`${latest.weight_kg ?? '—'} kg`} sub={weightDiff != null ? `${weightDiff > 0 ? '+' : ''}${weightDiff} kg so với đầu` : ''} subColor={weightDiff != null && weightDiff < 0 ? 'text-green-400' : 'text-gray-500'} />
-        <StatCard label="Body fat" value={`${latest.body_fat_pct ?? '—'} %`} sub={fatDiff != null ? `${fatDiff > 0 ? '+' : ''}${fatDiff}% so với đầu` : ''} subColor={fatDiff != null && fatDiff < 0 ? 'text-green-400' : 'text-gray-500'} />
+        <StatCard label="Cân nặng" value={`${latest.weight_kg ?? '—'} kg`} sub={weightDiff != null ? `${weightDiff > 0 ? '+' : ''}${weightDiff} kg so với đầu` : ''} subColor={weightDiff != null && weightDiff < 0 ? 'text-green-600' : 'text-slate-400'} />
+        <StatCard label="Body fat" value={`${latest.body_fat_pct ?? '—'} %`} sub={fatDiff != null ? `${fatDiff > 0 ? '+' : ''}${fatDiff}% so với đầu` : ''} subColor={fatDiff != null && fatDiff < 0 ? 'text-green-600' : 'text-slate-400'} />
         <StatCard label="Lean mass" value={`${latest.lean_mass_kg ?? '—'} kg`} sub="" subColor="" />
         <StatCard label="Vòng eo" value={`${latest.waist_cm ?? '—'} cm`} sub="" subColor="" />
       </div>
@@ -96,7 +96,7 @@ function BodyTab({ refreshKey }: { refreshKey: number }) {
       <ChartCard title="Cân nặng & Body fat">
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
             <XAxis dataKey="date" tick={axisStyle} />
             <YAxis yAxisId="w" domain={['dataMin - 1', 'dataMax + 1']} tick={axisStyle} />
             <YAxis yAxisId="f" orientation="right" domain={[10, 30]} tick={axisStyle} />
@@ -113,7 +113,7 @@ function BodyTab({ refreshKey }: { refreshKey: number }) {
         <ChartCard title="Lean mass (kg)">
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
               <XAxis dataKey="date" tick={axisStyle} />
               <YAxis domain={['dataMin - 1', 'dataMax + 1']} tick={axisStyle} />
               <Tooltip contentStyle={tooltipStyle} />
@@ -167,18 +167,23 @@ function StrengthTab() {
     <div className="space-y-5">
       {/* Exercise selector */}
       <div>
-        <p className="text-xs text-gray-500 mb-2">Chọn bài tập</p>
+        <p className="text-xs" style={{color:"var(--text-3)"}} mb-2">Chọn bài tập</p>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {exercises.map(ex => (
             <button key={ex.id} onClick={() => setSelectedId(ex.id)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedId === ex.id ? 'bg-sky-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
+              className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+              style={{
+                background: selectedId === ex.id ? 'var(--brand)' : 'var(--surface)',
+                color: selectedId === ex.id ? 'white' : 'var(--text-2)',
+                border: `1px solid ${selectedId === ex.id ? 'var(--brand)' : 'var(--border)'}`,
+              }}>
               {ex.name}
             </button>
           ))}
         </div>
       </div>
 
-      {loading && <p className="text-gray-500 text-sm text-center py-8">Đang tải...</p>}
+      {loading && <p className="text-sm" style={{color:"var(--text-3)"}} text-center py-8">Đang tải...</p>}
 
       {!loading && history.length === 0 && <EmptyState text="Chưa có dữ liệu cho bài này." />}
 
@@ -188,16 +193,16 @@ function StrengthTab() {
           <div className="grid grid-cols-3 gap-2">
             <StatCard label="Tạ hiện tại" value={`${latest.maxWeight} kg`}
               sub={prev ? (weightUp ? `↑ từ ${prev.maxWeight}kg` : `= ${prev.maxWeight}kg`) : 'Buổi đầu'}
-              subColor={weightUp ? 'text-green-400' : 'text-gray-500'} />
+              subColor={weightUp ? 'text-green-600' : 'text-slate-400'} />
             <StatCard label="Volume" value={`${latest.totalVolume}`}
               sub={prev ? (volumeUp ? `↑ từ ${prev.totalVolume}` : `↓ từ ${prev.totalVolume}`) : 'kg tổng'}
-              subColor={volumeUp ? 'text-green-400' : 'text-yellow-500'} />
+              subColor={volumeUp ? 'text-green-600' : 'text-amber-500'} />
             <StatCard label="RPE TB" value={latest.avgRpe != null ? `${latest.avgRpe}` : '—'}
               sub="buổi vừa rồi" subColor="text-gray-500" />
           </div>
 
           {/* Progressive overload status */}
-          {canUp && (
+          {prev && (
             <div className="rounded-xl px-4 py-3 text-sm font-medium"
               style={{ background: weightUp ? 'var(--success-bg)' : volumeUp ? 'var(--brand-light)' : 'var(--surface-2)', color: weightUp ? 'var(--success)' : volumeUp ? 'var(--brand-dark)' : 'var(--text-3)' }}>
               {weightUp
@@ -212,7 +217,7 @@ function StrengthTab() {
           <ChartCard title="Tạ tối đa mỗi buổi (kg)">
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                 <XAxis dataKey="date" tick={axisStyle} />
                 <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} tick={axisStyle} />
                 <Tooltip contentStyle={tooltipStyle} />
@@ -225,7 +230,7 @@ function StrengthTab() {
           <ChartCard title="Volume mỗi buổi (kg tổng)">
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                 <XAxis dataKey="date" tick={axisStyle} />
                 <YAxis tick={axisStyle} />
                 <Tooltip contentStyle={tooltipStyle} />
@@ -237,13 +242,13 @@ function StrengthTab() {
           {/* Recent session detail */}
           {latest.sets.length > 0 && (
             <div className="card p-4">
-              <p className="text-xs text-gray-500 mb-2">Buổi gần nhất — {shortDate(history[history.length - 1].date)}</p>
+              <p className="text-xs" style={{color:"var(--text-3)"}} mb-2">Buổi gần nhất — {shortDate(history[history.length - 1].date)}</p>
               <div className="space-y-1">
                 {latest.sets.map(s => (
-                  <div key={s.set_number} className="flex gap-4 text-xs text-gray-400">
-                    <span className="text-gray-600 w-10">Set {s.set_number}</span>
-                    <span className="font-medium text-gray-300">{s.weight_kg}kg × {s.reps}</span>
-                    {s.rpe != null && <span className="text-gray-600">RPE {s.rpe}</span>}
+                  <div key={s.set_number} className="flex gap-4 text-xs" style={{color:'var(--text-2)'}}>
+                    <span className="w-10" style={{color:'var(--text-3)'}}>Set {s.set_number}</span>
+                    <span className="font-medium" style={{color:'var(--text)'}}>{s.weight_kg}kg × {s.reps}</span>
+                    {s.rpe != null && <span style={{color:'var(--text-3)'}}>RPE {s.rpe}</span>}
                   </div>
                 ))}
               </div>
@@ -271,21 +276,21 @@ function RunningTab() {
       <div className="grid grid-cols-3 gap-2">
         <StatCard label="Tuần này" value={`${latest.totalKm} km`}
           sub={prev ? `Tuần trước ${prev.totalKm}km` : `${latest.sessions} buổi`}
-          subColor={latest.totalKm >= (prev?.totalKm ?? 0) ? 'text-green-400' : 'text-yellow-500'} />
+          subColor={latest.totalKm >= (prev?.totalKm ?? 0) ? 'text-green-600' : 'text-amber-500'} />
         <StatCard label="Số buổi" value={`${latest.sessions}`} sub="buổi/tuần" subColor="text-gray-500" />
         <StatCard label="Pace TB" value={paceStr(latest.avgPace)} sub="/km" subColor="text-gray-500" />
       </div>
 
       {/* Run type breakdown */}
       <div className="card p-4">
-        <p className="text-xs text-gray-500 mb-3">Phân bổ buổi chạy tuần này</p>
+        <p className="text-xs" style={{color:"var(--text-3)"}} mb-3">Phân bổ buổi chạy tuần này</p>
         <div className="flex gap-3">
           <RunTypeBadge label="Easy" count={latest.easy} bgColor="var(--success-bg)" textColor="var(--success)" />
           <RunTypeBadge label="Tempo" count={latest.tempo} bgColor="var(--warning-bg)" textColor="var(--warning)" />
           <RunTypeBadge label="Interval" count={latest.interval} bgColor="var(--danger-bg)" textColor="var(--danger)" />
         </div>
         {latest.easy >= 1 && latest.tempo >= 1 && (
-          <p className="text-xs text-gray-500 mt-3">
+          <p className="text-xs" style={{color:"var(--text-3)"}} mt-3">
             {latest.interval === 0
               ? '💡 Không có interval tuần này — ổn nếu đang tập trung hồi phục'
               : '✅ Phân bổ Easy/Tempo/Interval cân bằng'}
@@ -297,7 +302,7 @@ function RunningTab() {
       <ChartCard title="Tổng km mỗi tuần">
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={data.map(w => ({ ...w, date: w.weekLabel }))} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
             <XAxis dataKey="date" tick={axisStyle} />
             <YAxis tick={axisStyle} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v} km`]} />
@@ -311,7 +316,7 @@ function RunningTab() {
         <ChartCard title="Pace trung bình (giây/km — thấp hơn = nhanh hơn)">
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={data.map(w => ({ date: w.weekLabel, pace: w.avgPace }))} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
               <XAxis dataKey="date" tick={axisStyle} />
               <YAxis domain={['dataMin - 20', 'dataMax + 20']} tick={axisStyle} tickFormatter={v => paceStr(v)} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [paceStr(v), 'Pace TB']} />
@@ -355,7 +360,7 @@ function RecoveryTab({ refreshKey }: { refreshKey: number }) {
         <StatCard label="Resting HR hôm nay" value={`${latest.resting_hr ?? '—'} bpm`}
           sub={avgHr ? `TB: ${avgHr} bpm` : ''} subColor="text-gray-500" />
         <StatCard label="Điểm ngủ" value={`${latest.sleep_score ?? '—'}`}
-          sub={avgSleep ? `TB: ${avgSleep}/100` : ''} subColor={latest.sleep_score != null && latest.sleep_score >= 80 ? 'text-green-400' : 'text-yellow-500'} />
+          sub={avgSleep ? `TB: ${avgSleep}/100` : ''} subColor={latest.sleep_score != null && latest.sleep_score >= 80 ? 'text-green-600' : 'text-amber-500'} />
         <StatCard label="Thời gian ngủ" value={sleepStr(latest.sleep_duration_min)} sub="hôm nay" subColor="text-gray-500" />
         <StatCard label="Năng lượng" value={latest.energy_level ?? '—'} sub="" subColor="text-gray-500" />
       </div>
@@ -365,11 +370,11 @@ function RecoveryTab({ refreshKey }: { refreshKey: number }) {
         <ChartCard title="Resting HR theo ngày (thấp hơn = hồi phục tốt hơn)">
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={data.map(d => ({ date: shortDate(d.date), hr: d.resting_hr }))} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
               <XAxis dataKey="date" tick={axisStyle} />
               <YAxis domain={['dataMin - 3', 'dataMax + 3']} tick={axisStyle} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v} bpm`]} />
-              {avgHr && <ReferenceLine y={avgHr} stroke="#374151" strokeDasharray="3 3" />}
+              {avgHr && <ReferenceLine y={avgHr} stroke="#CBD5E1" strokeDasharray="3 3" />}
               <Line type="monotone" dataKey="hr" name="Resting HR" stroke={COLORS.hr} strokeWidth={2} dot={{ r: 3 }} connectNulls />
             </LineChart>
           </ResponsiveContainer>
@@ -381,12 +386,12 @@ function RecoveryTab({ refreshKey }: { refreshKey: number }) {
         <ChartCard title="Điểm ngủ theo ngày">
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={data.map(d => ({ date: shortDate(d.date), score: d.sleep_score, dur: d.sleep_duration_min ? Math.round(d.sleep_duration_min / 60 * 10) / 10 : null }))} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
               <XAxis dataKey="date" tick={axisStyle} />
               <YAxis yAxisId="s" domain={[50, 100]} tick={axisStyle} />
               <YAxis yAxisId="h" orientation="right" domain={[0, 12]} tick={axisStyle} />
               <Tooltip contentStyle={tooltipStyle} />
-              <ReferenceLine yAxisId="s" y={80} stroke="#374151" strokeDasharray="3 3" />
+              <ReferenceLine yAxisId="s" y={80} stroke="#CBD5E1" strokeDasharray="3 3" />
               <Line yAxisId="s" type="monotone" dataKey="score" name="Điểm ngủ" stroke={COLORS.sleep} strokeWidth={2} dot={{ r: 3 }} connectNulls />
               <Line yAxisId="h" type="monotone" dataKey="dur" name="Giờ ngủ" stroke={COLORS.km} strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
             </LineChart>
