@@ -150,11 +150,32 @@ function StrengthTab() {
 
   if (!exercises.length) return <EmptyState text="Chưa có dữ liệu tập. Hoàn thành vài buổi tập để xem tiến trình." />
 
-  const chartData = history.map(h => ({ date: shortDate(h.date), tạ: h.maxWeight, volume: h.totalVolume, rpe: h.avgRpe }))
+  const chartData = history.map(h => {
+    const maxReps = h.sets.length > 0 ? Math.max(...h.sets.map(s => s.reps)) : 0
+    const totalReps = h.sets.reduce((sum, s) => sum + s.reps, 0)
+    return {
+      date: shortDate(h.date),
+      tạ: h.maxWeight,
+      volume: h.totalVolume,
+      rpe: h.avgRpe,
+      maxReps,
+      totalReps,
+    }
+  })
   const latest = history[history.length - 1]
   const prev = history[history.length - 2]
-  const weightUp = latest && prev && latest.maxWeight > prev.maxWeight
-  const volumeUp = latest && prev && latest.totalVolume > prev.totalVolume
+
+  // Detect bodyweight exercise: tạ = 0 toàn bộ lịch sử
+  const isBodyweight = history.length > 0 && history.every(h => h.maxWeight === 0)
+
+  const latestMaxReps = chartData[chartData.length - 1]?.maxReps ?? 0
+  const prevMaxReps = chartData[chartData.length - 2]?.maxReps ?? 0
+  const latestTotalReps = chartData[chartData.length - 1]?.totalReps ?? 0
+  const prevTotalReps = chartData[chartData.length - 2]?.totalReps ?? 0
+
+  const weightUp = !isBodyweight && latest && prev && latest.maxWeight > prev.maxWeight
+  const volumeUp = !isBodyweight && latest && prev && latest.totalVolume > prev.totalVolume
+  const repsUp = isBodyweight && latestMaxReps > prevMaxReps
 
   // Group by muscle_group for selector
   const grouped: Record<string, Exercise[]> = {}
@@ -191,21 +212,43 @@ function StrengthTab() {
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-3 gap-2">
-            <StatCard label="Tạ hiện tại" value={`${latest.maxWeight} kg`}
-              sub={prev ? (weightUp ? `↑ từ ${prev.maxWeight}kg` : `= ${prev.maxWeight}kg`) : 'Buổi đầu'}
-              subColor={weightUp ? 'text-green-600' : 'text-slate-400'} />
-            <StatCard label="Volume" value={`${latest.totalVolume}`}
-              sub={prev ? (volumeUp ? `↑ từ ${prev.totalVolume}` : `↓ từ ${prev.totalVolume}`) : 'kg tổng'}
-              subColor={volumeUp ? 'text-green-600' : 'text-amber-500'} />
+            {isBodyweight ? (
+              <>
+                <StatCard label="Reps cao nhất" value={`${latestMaxReps}`}
+                  sub={prev ? (repsUp ? `↑ từ ${prevMaxReps}` : `= ${prevMaxReps}`) : 'Buổi đầu'}
+                  subColor={repsUp ? 'text-green-600' : 'text-slate-400'} />
+                <StatCard label="Tổng reps" value={`${latestTotalReps}`}
+                  sub={prev ? (latestTotalReps > prevTotalReps ? `↑ từ ${prevTotalReps}` : `= ${prevTotalReps}`) : 'reps'}
+                  subColor={latestTotalReps > prevTotalReps ? 'text-green-600' : 'text-slate-400'} />
+              </>
+            ) : (
+              <>
+                <StatCard label="Tạ hiện tại" value={`${latest.maxWeight} kg`}
+                  sub={prev ? (weightUp ? `↑ từ ${prev.maxWeight}kg` : `= ${prev.maxWeight}kg`) : 'Buổi đầu'}
+                  subColor={weightUp ? 'text-green-600' : 'text-slate-400'} />
+                <StatCard label="Volume" value={`${latest.totalVolume}`}
+                  sub={prev ? (volumeUp ? `↑ từ ${prev.totalVolume}` : `↓ từ ${prev.totalVolume}`) : 'kg tổng'}
+                  subColor={volumeUp ? 'text-green-600' : 'text-amber-500'} />
+              </>
+            )}
             <StatCard label="RPE TB" value={latest.avgRpe != null ? `${latest.avgRpe}` : '—'}
-              sub="buổi vừa rồi" subColor="text-gray-500" />
+              sub="buổi vừa rồi" subColor="text-slate-400" />
           </div>
 
           {/* Progressive overload status */}
           {prev && (
             <div className="rounded-xl px-4 py-3 text-sm font-medium"
-              style={{ background: weightUp ? 'var(--success-bg)' : volumeUp ? 'var(--brand-light)' : 'var(--surface-2)', color: weightUp ? 'var(--success)' : volumeUp ? 'var(--brand-dark)' : 'var(--text-3)' }}>
-              {weightUp
+              style={{
+                background: (isBodyweight ? repsUp : weightUp) ? 'var(--success-bg)' : (isBodyweight ? latestTotalReps > prevTotalReps : volumeUp) ? 'var(--brand-light)' : 'var(--surface-2)',
+                color: (isBodyweight ? repsUp : weightUp) ? 'var(--success)' : (isBodyweight ? latestTotalReps > prevTotalReps : volumeUp) ? 'var(--brand-dark)' : 'var(--text-3)',
+              }}>
+              {isBodyweight
+                ? repsUp
+                  ? `✅ Max reps tăng ${prevMaxReps} → ${latestMaxReps} — tiến bộ tốt!`
+                  : latestTotalReps > prevTotalReps
+                  ? `📈 Tổng reps tăng — đang build endurance`
+                  : `⏸ Giữ nguyên — cải thiện form và tốc độ`
+                : weightUp
                 ? `✅ Đã tăng tạ ${prev.maxWeight}kg → ${latest.maxWeight}kg`
                 : volumeUp
                 ? `📈 Volume tăng — đang build capacity trước khi tăng tạ`
@@ -213,28 +256,42 @@ function StrengthTab() {
             </div>
           )}
 
-          {/* Weight progression chart */}
-          <ChartCard title="Tạ tối đa mỗi buổi (kg)">
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis dataKey="date" tick={axisStyle} />
-                <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} tick={axisStyle} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Line type="monotone" dataKey="tạ" stroke={COLORS.weight2} strokeWidth={2} dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
+          {/* Chart: bodyweight dùng reps, weighted dùng tạ */}
+          {isBodyweight ? (
+            <ChartCard title="Reps cao nhất mỗi buổi">
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis dataKey="date" tick={axisStyle} />
+                  <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={axisStyle} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line type="monotone" dataKey="maxReps" name="Max reps" stroke={COLORS.lean} strokeWidth={2} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          ) : (
+            <ChartCard title="Tạ tối đa mỗi buổi (kg)">
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis dataKey="date" tick={axisStyle} />
+                  <YAxis domain={['dataMin - 0.5', 'dataMax + 0.5']} tick={axisStyle} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line type="monotone" dataKey="tạ" stroke={COLORS.weight2} strokeWidth={2} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          )}
 
-          {/* Volume chart */}
-          <ChartCard title="Volume mỗi buổi (kg tổng)">
+          {/* Volume / Total reps chart */}
+          <ChartCard title={isBodyweight ? "Tổng reps mỗi buổi" : "Volume mỗi buổi (kg tổng)"}>
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                 <XAxis dataKey="date" tick={axisStyle} />
                 <YAxis tick={axisStyle} />
                 <Tooltip contentStyle={tooltipStyle} />
-                <Bar dataKey="volume" fill={COLORS.volume} radius={[4, 4, 0, 0]} />
+                <Bar dataKey={isBodyweight ? "totalReps" : "volume"} name={isBodyweight ? "Tổng reps" : "Volume (kg)"} fill={isBodyweight ? COLORS.lean : COLORS.volume} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -247,7 +304,9 @@ function StrengthTab() {
                 {latest.sets.map(s => (
                   <div key={s.set_number} className="flex gap-4 text-xs" style={{color:'var(--text-2)'}}>
                     <span className="w-10" style={{color:'var(--text-3)'}}>Set {s.set_number}</span>
-                    <span className="font-medium" style={{color:'var(--text)'}}>{s.weight_kg}kg × {s.reps}</span>
+                    <span className="font-medium" style={{color:'var(--text)'}}>
+                      {isBodyweight ? `${s.reps} reps` : `${s.weight_kg}kg × ${s.reps}`}
+                    </span>
                     {s.rpe != null && <span style={{color:'var(--text-3)'}}>RPE {s.rpe}</span>}
                   </div>
                 ))}
