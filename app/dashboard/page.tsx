@@ -183,7 +183,7 @@ function StrengthTab() {
         </div>
       </div>
 
-      {loading && <p className="text-sm" style={{color:"var(--text-3)"}} text-center py-8">Đang tải...</p>}
+      {loading && <p className="text-sm text-center py-8" style={{color:"var(--text-3)"}}>Đang tải...</p>}
 
       {!loading && history.length === 0 && <EmptyState text="Chưa có dữ liệu cho bài này." />}
 
