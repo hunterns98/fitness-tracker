@@ -541,6 +541,11 @@ export default function DashboardPage() {
               style={{ background: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }}>
               🤖 AI Coach
             </button>
+            <button onClick={() => router.push('/data')}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium"
+              style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+              📊 Excel
+            </button>
             <button onClick={() => setRefreshKey(k => k + 1)}
               className="px-3 py-1.5 rounded-xl text-xs font-medium"
               style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
