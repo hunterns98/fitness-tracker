@@ -47,8 +47,8 @@ function EmptyState({ text }: { text: string }) {
 }
 
 // ─── Body Tab ─────────────────────────────────────────────────
-function BodyTab({ refreshKey }: { refreshKey: number }) {
-  const [data, setData] = useState<BodyPoint[]>([])
+function BodyTab({ refreshKey, days }: { refreshKey: number; days: number }) {
+  const [allData, setAllData] = useState<BodyPoint[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -57,10 +57,16 @@ function BodyTab({ refreshKey }: { refreshKey: number }) {
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.error); return }
-        setData(Array.isArray(d) ? d : [])
+        setAllData(Array.isArray(d) ? d : [])
       })
       .catch(() => setError('Không thể tải dữ liệu'))
   }, [refreshKey])
+
+  // Filter by days
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  const data = days >= 9999 ? allData : allData.filter(d => d.date >= cutoffStr)
 
   if (error) return <div className="card px-4 py-3 border-red-900 text-red-400 text-sm">{error}</div>
   if (!data.length) return <EmptyState text="Chưa có dữ liệu cơ thể. Nhấn '+ Ghi chép' để nhập." />
@@ -320,9 +326,14 @@ function StrengthTab() {
 }
 
 // ─── Running Tab ──────────────────────────────────────────────
-function RunningTab() {
-  const [data, setData] = useState<RunWeek[]>([])
-  useEffect(() => { fetch('/api/dashboard/running').then(r => r.json()).then(setData) }, [])
+function RunningTab({ days }: { days: number }) {
+  const [allData, setAllData] = useState<RunWeek[]>([])
+  useEffect(() => { fetch('/api/dashboard/running').then(r => r.json()).then(d => setAllData(Array.isArray(d) ? d : [])) }, [])
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  const data = days >= 9999 ? allData : allData.filter(w => w.week >= cutoffStr)
 
   if (!data.length) return <EmptyState text="Chưa có dữ liệu chạy bộ." />
 
@@ -389,8 +400,8 @@ function RunningTab() {
 }
 
 // ─── Recovery Tab ─────────────────────────────────────────────
-function RecoveryTab({ refreshKey }: { refreshKey: number }) {
-  const [data, setData] = useState<RecoveryPoint[]>([])
+function RecoveryTab({ refreshKey, days }: { refreshKey: number; days: number }) {
+  const [allData, setAllData] = useState<RecoveryPoint[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -399,10 +410,15 @@ function RecoveryTab({ refreshKey }: { refreshKey: number }) {
       .then(r => r.json())
       .then(d => {
         if (d.error) { setError(d.error); return }
-        setData(Array.isArray(d) ? d : [])
+        setAllData(Array.isArray(d) ? d : [])
       })
       .catch(() => setError('Không thể tải dữ liệu'))
   }, [refreshKey])
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  const data = days >= 9999 ? allData : allData.filter(d => d.date >= cutoffStr)
 
   if (error) return <div className="card px-4 py-3 border-red-900 text-red-400 text-sm">{error}</div>
   if (!data.length) return <EmptyState text="Chưa có dữ liệu phục hồi. Nhấn '+ Ghi chép' để nhập." />
@@ -490,10 +506,20 @@ function RunTypeBadge({ label, count, bgColor, textColor }: { label: string; cou
 }
 
 // ─── Main ─────────────────────────────────────────────────────
+type TimeRange = '1w' | '1m' | '3m' | 'all'
+const TIME_RANGES: { id: TimeRange; label: string; days: number }[] = [
+  { id: '1w', label: '1 tuần', days: 7 },
+  { id: '1m', label: '1 tháng', days: 30 },
+  { id: '3m', label: '3 tháng', days: 90 },
+  { id: 'all', label: 'Tất cả', days: 9999 },
+]
+
 export default function DashboardPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('body')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [timeRange, setTimeRange] = useState<TimeRange>('1m')
+  const days = TIME_RANGES.find(r => r.id === timeRange)!.days
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: 'body', label: 'Cơ thể', icon: '⚖️' },
@@ -520,17 +546,32 @@ export default function DashboardPage() {
               style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
               ↻
             </button>
-            <button onClick={() => router.push('/log')}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium"
-              style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
-              + Log
-            </button>
             <button onClick={() => router.push('/')} className="text-xs" style={{ color: 'var(--text-3)' }}>← Về</button>
           </div>
         </div>
 
+        {/* Time range filter */}
+        <div className="flex gap-1.5 mt-3 overflow-x-auto pb-0.5">
+          {TIME_RANGES.map(r => (
+            <button key={r.id} onClick={() => setTimeRange(r.id)}
+              className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={{
+                background: timeRange === r.id ? 'var(--brand)' : 'var(--surface-2)',
+                color: timeRange === r.id ? 'white' : 'var(--text-3)',
+                border: `1px solid ${timeRange === r.id ? 'var(--brand)' : 'var(--border)'}`,
+              }}>
+              {r.label}
+            </button>
+          ))}
+          <button onClick={() => router.push('/log')}
+            className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ml-auto"
+            style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+            + Ghi chép
+          </button>
+        </div>
+
         {/* Tab bar */}
-        <div className="flex gap-1 mt-4 p-1 rounded-xl" style={{ background: 'var(--surface-2)' }}>
+        <div className="flex gap-1 mt-3 p-1 rounded-xl" style={{ background: 'var(--surface-2)' }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
@@ -548,10 +589,10 @@ export default function DashboardPage() {
 
       {/* Tab content */}
       <div className="px-4 pt-4">
-        {tab === 'body' && <BodyTab refreshKey={refreshKey} />}
+        {tab === 'body' && <BodyTab refreshKey={refreshKey} days={days} />}
         {tab === 'strength' && <StrengthTab />}
-        {tab === 'running' && <RunningTab />}
-        {tab === 'recovery' && <RecoveryTab refreshKey={refreshKey} />}
+        {tab === 'running' && <RunningTab days={days} />}
+        {tab === 'recovery' && <RecoveryTab refreshKey={refreshKey} days={days} />}
       </div>
     </div>
   )
