@@ -167,7 +167,7 @@ function StrengthTab() {
     <div className="space-y-5">
       {/* Exercise selector */}
       <div>
-        <p className="text-xs" style={{color:"var(--text-3)"}} mb-2">Chọn bài tập</p>
+        <p className="text-xs mb-2" style={{color:"var(--text-3)"}}>Chọn bài tập</p>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {exercises.map(ex => (
             <button key={ex.id} onClick={() => setSelectedId(ex.id)}
@@ -242,7 +242,7 @@ function StrengthTab() {
           {/* Recent session detail */}
           {latest.sets.length > 0 && (
             <div className="card p-4">
-              <p className="text-xs" style={{color:"var(--text-3)"}} mb-2">Buổi gần nhất — {shortDate(history[history.length - 1].date)}</p>
+              <p className="text-xs" style={{color:"var(--text-3)"}} className="mb-2">Buổi gần nhất — {shortDate(history[history.length - 1].date)}</p>
               <div className="space-y-1">
                 {latest.sets.map(s => (
                   <div key={s.set_number} className="flex gap-4 text-xs" style={{color:'var(--text-2)'}}>
@@ -283,14 +283,14 @@ function RunningTab() {
 
       {/* Run type breakdown */}
       <div className="card p-4">
-        <p className="text-xs" style={{color:"var(--text-3)"}} mb-3">Phân bổ buổi chạy tuần này</p>
+        <p className="text-xs" style={{color:"var(--text-3)"}} className="mb-3">Phân bổ buổi chạy tuần này</p>
         <div className="flex gap-3">
           <RunTypeBadge label="Easy" count={latest.easy} bgColor="var(--success-bg)" textColor="var(--success)" />
           <RunTypeBadge label="Tempo" count={latest.tempo} bgColor="var(--warning-bg)" textColor="var(--warning)" />
           <RunTypeBadge label="Interval" count={latest.interval} bgColor="var(--danger-bg)" textColor="var(--danger)" />
         </div>
         {latest.easy >= 1 && latest.tempo >= 1 && (
-          <p className="text-xs" style={{color:"var(--text-3)"}} mt-3">
+          <p className="text-xs" style={{color:"var(--text-3)"}} className="mt-3">
             {latest.interval === 0
               ? '💡 Không có interval tuần này — ổn nếu đang tập trung hồi phục'
               : '✅ Phân bổ Easy/Tempo/Interval cân bằng'}
