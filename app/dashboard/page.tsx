@@ -12,9 +12,10 @@ type BodyPoint = { date: string; weight_kg: number | null; body_fat_pct: number 
 type StrengthPoint = { date: string; maxWeight: number; totalVolume: number; avgRpe: number | null; sets: { set_number: number; reps: number; weight_kg: number; rpe: number | null }[] }
 type RunWeek = { week: string; weekLabel: string; totalKm: number; sessions: number; easy: number; tempo: number; interval: number; avgPace: number | null }
 type RecoveryPoint = { date: string; resting_hr: number | null; sleep_score: number | null; sleep_duration_min: number | null; energy_level: string | null }
+type NutritionPoint = { date: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; water_adequate: boolean | null }
 type Exercise = { id: string; name: string; muscle_group: string }
 
-type Tab = 'body' | 'strength' | 'running' | 'recovery'
+type Tab = 'body' | 'strength' | 'running' | 'recovery' | 'nutrition'
 
 // ─── Helpers ──────────────────────────────────────────────────
 function shortDate(d: string) {
@@ -32,7 +33,7 @@ function sleepStr(min: number | null) {
 }
 
 // ─── Chart theme ──────────────────────────────────────────────
-const COLORS = { weight: '#0EA5E9', fat: '#F59E0B', lean: '#16A34A', waist: '#8B5CF6', volume: '#6366F1', weight2: '#EC4899', hr: '#EF4444', sleep: '#8B5CF6', km: '#16A34A' }
+const COLORS = { weight: '#0EA5E9', fat: '#F59E0B', lean: '#16A34A', waist: '#8B5CF6', volume: '#6366F1', weight2: '#EC4899', hr: '#EF4444', sleep: '#8B5CF6', km: '#16A34A', warning: '#F59E0B' }
 const tooltipStyle = { backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, fontSize: 12, boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }
 const axisStyle = { fill: '#94A3B8', fontSize: 11 }
 
@@ -477,6 +478,119 @@ function RecoveryTab({ refreshKey, days }: { refreshKey: number; days: number })
   )
 }
 
+// ─── Nutrition Tab ────────────────────────────────────────────
+function NutritionTab({ refreshKey, days }: { refreshKey: number; days: number }) {
+  const [allData, setAllData] = useState<NutritionPoint[]>([])
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    setError('')
+    fetch('/api/dashboard/nutrition')
+      .then(r => r.json())
+      .then(d => { if (d.error) { setError(d.error); return }; setAllData(Array.isArray(d) ? d : []) })
+      .catch(() => setError('Không thể tải dữ liệu'))
+  }, [refreshKey])
+
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  const data = days >= 9999 ? allData : allData.filter(d => d.date >= cutoffStr)
+
+  if (error) return <div className="card px-4 py-3 text-sm" style={{ border: '1.5px solid var(--danger)', color: 'var(--danger)' }}>{error}</div>
+  if (!data.length) return <EmptyState text="Chưa có dữ liệu dinh dưỡng. Nhấn '+ Ghi chép' → tab Dinh dưỡng." />
+
+  // Tính trung bình
+  const withCal = data.filter(d => d.calories != null)
+  const withProt = data.filter(d => d.protein_g != null)
+  const avgCal = withCal.length ? Math.round(withCal.reduce((s, d) => s + (d.calories ?? 0), 0) / withCal.length) : null
+  const avgProt = withProt.length ? Math.round(withProt.reduce((s, d) => s + (d.protein_g ?? 0), 0) / withProt.length) : null
+  const latest = data[data.length - 1]
+  const daysProteinOk = data.filter(d => (d.protein_g ?? 0) >= 130).length
+  const proteinRate = data.length > 0 ? Math.round(daysProteinOk / data.length * 100) : 0
+
+  const chartData = data.map(d => ({
+    date: shortDate(d.date),
+    calories: d.calories,
+    protein: d.protein_g,
+    carbs: d.carbs_g,
+    fat: d.fat_g,
+  }))
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Calo TB/ngày" value={avgCal ? `${avgCal} kcal` : '—'}
+          sub={latest.calories ? `Hôm qua: ${latest.calories} kcal` : ''}
+          subColor="text-slate-400" />
+        <StatCard label="Protein TB/ngày" value={avgProt ? `${avgProt}g` : '—'}
+          sub={`${proteinRate}% ngày đủ protein`}
+          subColor={proteinRate >= 80 ? 'text-green-600' : 'text-amber-500'} />
+      </div>
+
+      {/* Protein adequacy indicator */}
+      <div className="rounded-xl px-4 py-3 flex items-center gap-3"
+        style={{ background: proteinRate >= 80 ? 'var(--success-bg)' : 'var(--warning-bg)' }}>
+        <span className="text-2xl">{proteinRate >= 80 ? '💪' : '⚠️'}</span>
+        <div>
+          <p className="text-sm font-semibold" style={{ color: proteinRate >= 80 ? 'var(--success)' : 'var(--warning)' }}>
+            Protein đủ {daysProteinOk}/{data.length} ngày ({proteinRate}%)
+          </p>
+          <p className="text-xs" style={{ color: proteinRate >= 80 ? 'var(--success)' : 'var(--warning)' }}>
+            {proteinRate >= 80 ? 'Tốt — đủ điều kiện tăng cơ' : 'Cần tăng protein thêm để hỗ trợ tăng cơ'}
+          </p>
+        </div>
+      </div>
+
+      {/* Calories chart */}
+      <ChartCard title="Calo theo ngày (kcal)">
+        <ResponsiveContainer width="100%" height={180}>
+          <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+            <XAxis dataKey="date" tick={axisStyle} />
+            <YAxis domain={[1200, 'auto']} tick={axisStyle} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v} kcal`]} />
+            <ReferenceLine y={1800} stroke="#CBD5E1" strokeDasharray="3 3" label={{ value: '1800', position: 'right', fontSize: 10, fill: '#94A3B8' }} />
+            <ReferenceLine y={2200} stroke="#CBD5E1" strokeDasharray="3 3" label={{ value: '2200', position: 'right', fontSize: 10, fill: '#94A3B8' }} />
+            <Bar dataKey="calories" name="Calo" fill={COLORS.weight} radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {/* Protein chart */}
+      <ChartCard title="Protein theo ngày (g)">
+        <ResponsiveContainer width="100%" height={160}>
+          <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+            <XAxis dataKey="date" tick={axisStyle} />
+            <YAxis domain={[60, 'auto']} tick={axisStyle} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v}g`]} />
+            <ReferenceLine y={130} stroke="#16A34A" strokeDasharray="3 3" label={{ value: '130g min', position: 'right', fontSize: 10, fill: '#16A34A' }} />
+            <Line type="monotone" dataKey="protein" name="Protein (g)" stroke={COLORS.lean} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {/* Macro breakdown chart */}
+      {data.some(d => d.carbs_g != null) && (
+        <ChartCard title="Phân bổ macro theo ngày">
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+              <XAxis dataKey="date" tick={axisStyle} />
+              <YAxis tick={axisStyle} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v: number, name: string) => [`${v}g`, name]} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="protein" name="Protein" stackId="a" fill={COLORS.lean} />
+              <Bar dataKey="carbs" name="Carbs" stackId="a" fill={COLORS.warning} />
+              <Bar dataKey="fat" name="Fat" stackId="a" fill={COLORS.hr} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
+    </div>
+  )
+}
+
 function StatCard({ label, value, sub, subColor }: { label: string; value: string; sub: string; subColor: string }) {
   return (
     <div className="card-sm px-4 py-3">
@@ -525,6 +639,7 @@ export default function DashboardPage() {
     { id: 'body', label: 'Cơ thể', icon: '⚖️' },
     { id: 'strength', label: 'Sức mạnh', icon: '🏋️' },
     { id: 'running', label: 'Chạy bộ', icon: '🏃' },
+    { id: 'nutrition', label: 'Dinh dưỡng', icon: '🥗' },
     { id: 'recovery', label: 'Phục hồi', icon: '😴' },
   ]
 
@@ -597,6 +712,7 @@ export default function DashboardPage() {
         {tab === 'body' && <BodyTab refreshKey={refreshKey} days={days} />}
         {tab === 'strength' && <StrengthTab />}
         {tab === 'running' && <RunningTab days={days} />}
+        {tab === 'nutrition' && <NutritionTab refreshKey={refreshKey} days={days} />}
         {tab === 'recovery' && <RecoveryTab refreshKey={refreshKey} days={days} />}
       </div>
     </div>
