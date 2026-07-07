@@ -92,7 +92,11 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
     'Template - Body': 'body_metrics',
     'Sleep & Recovery': 'sleep_recovery',
     'Template - Sleep': 'sleep_recovery',
+    'Running': 'running',           // fix: sheet name trong file Excel lịch sử
     'Template - Running': 'running',
+    'Dinh dưỡng': 'nutrition',
+    'Nutrition': 'nutrition',
+    'Template - Nutrition': 'nutrition',
   }
 
   const results: ImportResult[] = []
