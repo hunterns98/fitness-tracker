@@ -123,6 +123,34 @@ function validateRunning(rows: ImportRow[]): { valid: ImportRow[]; errors: Valid
   return { valid, errors }
 }
 
+// Validate nutrition rows
+function validateNutrition(rows: ImportRow[]): { valid: ImportRow[]; errors: ValidationError[] } {
+  const valid: ImportRow[] = []
+  const errors: ValidationError[] = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const rowNum = i + 2
+
+    if (!r.date || !isValidDate(String(r.date))) {
+      errors.push({ sheet: 'Dinh dưỡng', row: rowNum, field: 'date', message: 'Ngày không hợp lệ (dùng YYYY-MM-DD)' })
+      continue
+    }
+
+    valid.push({
+      date: String(r.date),
+      calories: parseNum(r.calories),
+      protein_g: parseNum(r.protein_g),
+      carbs_g: parseNum(r.carbs_g),
+      fat_g: parseNum(r.fat_g),
+      fiber_g: parseNum(r.fiber_g),
+      water_adequate: r.water_adequate !== undefined ? Boolean(r.water_adequate) : true,
+      note: parseStr(r.note),
+    })
+  }
+  return { valid, errors }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { sheet, rows } = await req.json()
@@ -139,6 +167,8 @@ export async function POST(req: NextRequest) {
       validation = validateSleep(rows)
     } else if (sheet === 'running') {
       validation = validateRunning(rows)
+    } else if (sheet === 'nutrition') {
+      validation = validateNutrition(rows)
     } else {
       return NextResponse.json({ error: `Sheet không hỗ trợ: ${sheet}` }, { status: 400 })
     }
@@ -155,6 +185,8 @@ export async function POST(req: NextRequest) {
       result = await supabase.from('sleep_recovery_logs').upsert(validation.valid, { onConflict: 'date' })
     } else if (sheet === 'running') {
       result = await supabase.from('workout_sessions').insert(validation.valid)
+    } else if (sheet === 'nutrition') {
+      result = await supabase.from('nutrition_logs').upsert(validation.valid, { onConflict: 'date' })
     }
 
     if (result?.error) {
