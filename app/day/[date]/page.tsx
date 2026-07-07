@@ -60,12 +60,13 @@ export default function DayPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
-  const [addType, setAddType] = useState<'strength' | 'run' | 'other' | null>(null)
+  const [addType, setAddType] = useState<'strength' | 'run' | 'other' | 'rest' | null>(null)
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [selectedRunType, setSelectedRunType] = useState('easy')
   const [otherName, setOtherName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -82,33 +83,52 @@ export default function DayPage() {
 
   async function createSession() {
     setCreating(true)
-    let body: any = { date, type: addType }
+    setCreateError('')
+
+    // Build body — chỉ gửi các field có trong schema workout_sessions
+    const body: Record<string, any> = { date, type: addType }
 
     if (addType === 'strength') {
-      const tmpl = templates.find(t => t.id === selectedTemplate)
       body.template_id = selectedTemplate
-      body.name_override = null
     } else if (addType === 'run') {
+      // run_type_custom KHÔNG có trong schema → dùng name_override để lưu loại chạy
       body.name_override = RUN_TYPES.find(r => r.value === selectedRunType)?.label ?? 'Chạy bộ'
-      body.run_type_custom = selectedRunType
     } else if (addType === 'other') {
       body.name_override = otherName || 'Other Workout'
+    } else if (addType === 'rest') {
+      body.name_override = 'Nghỉ ngơi'
     }
 
-    const res = await fetch('/api/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const session = await res.json()
-    setCreating(false)
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
 
-    if (addType === 'strength') {
-      router.push(`/workout/${session.id}`)
-    } else if (addType === 'run') {
-      router.push(`/workout/${session.id}/run`)
-    } else {
-      router.push(`/workout/${session.id}/other`)
+      const session = await res.json()
+
+      // Defensive guard: không navigate nếu không có session.id hợp lệ
+      if (!res.ok || !session.id || typeof session.id !== 'string') {
+        setCreateError(session.error ?? 'Không tạo được buổi tập. Thử lại.')
+        setCreating(false)
+        return
+      }
+
+      // Navigate chỉ khi session.id tồn tại và hợp lệ
+      if (addType === 'strength') {
+        router.push(`/workout/${session.id}`)
+      } else if (addType === 'run') {
+        router.push(`/workout/${session.id}/run`)
+      } else if (addType === 'other') {
+        router.push(`/workout/${session.id}/other`)
+      } else if (addType === 'rest') {
+        // Nghỉ ngơi không cần màn hình tập, vào thẳng summary
+        router.push(`/summary/${session.id}`)
+      }
+    } catch (err) {
+      setCreateError('Lỗi kết nối. Thử lại.')
+      setCreating(false)
     }
   }
 
@@ -176,20 +196,30 @@ export default function DayPage() {
             {!addType && (
               <>
                 <h3 className="font-bold text-lg text-center" style={{ color: 'var(--text)' }}>Thêm buổi tập</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   {[
                     { type: 'strength', icon: '💪', label: 'Kháng lực', cls: 'type-card-strength' },
                     { type: 'run', icon: '🏃', label: 'Chạy bộ', cls: 'type-card-run' },
                     { type: 'other', icon: '⭐', label: 'Khác', cls: 'type-card-other' },
+                    { type: 'rest', icon: '😴', label: 'Nghỉ ngơi', cls: 'type-card-rest' },
                   ].map(opt => (
                     <button key={opt.type}
-                      onClick={() => setAddType(opt.type as any)}
+                      onClick={() => {
+                        setAddType(opt.type as any)
+                        // Rest Day không cần bước chọn thêm → tạo ngay
+                        if (opt.type === 'rest') {
+                          setAddType('rest')
+                        }
+                      }}
                       className={`${opt.cls} rounded-2xl p-4 flex flex-col items-center gap-2`}>
                       <span className="text-3xl">{opt.icon}</span>
                       <span className="text-white text-sm font-semibold">{opt.label}</span>
                     </button>
                   ))}
                 </div>
+                {createError && (
+                  <p className="text-sm text-center" style={{ color: 'var(--danger)' }}>{createError}</p>
+                )}
                 <button onClick={() => setShowAdd(false)} className="btn-ghost w-full text-center">Huỷ</button>
               </>
             )}
@@ -214,6 +244,7 @@ export default function DayPage() {
                     </button>
                   ))}
                 </div>
+                {createError && <p className="text-sm" style={{ color: 'var(--danger)' }}>{createError}</p>}
                 <button onClick={createSession} disabled={!selectedTemplate || creating}
                   className="btn-primary">
                   {creating ? 'Đang tạo...' : 'Bắt đầu tập →'}
@@ -241,8 +272,27 @@ export default function DayPage() {
                     </button>
                   ))}
                 </div>
+                {createError && <p className="text-sm" style={{ color: 'var(--danger)' }}>{createError}</p>}
                 <button onClick={createSession} disabled={creating} className="btn-primary">
                   {creating ? 'Đang tạo...' : 'Tiếp tục →'}
+                </button>
+              </>
+            )}
+
+            {addType === 'rest' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setAddType(null)} style={{ color: 'var(--text-3)' }}>←</button>
+                  <h3 className="font-bold text-lg" style={{ color: 'var(--text)' }}>😴 Nghỉ ngơi</h3>
+                </div>
+                <p className="text-sm" style={{ color: 'var(--text-2)' }}>
+                  Ghi lại ngày nghỉ ngơi để theo dõi workout streak và lịch sử tập luyện.
+                </p>
+                {createError && (
+                  <p className="text-sm" style={{ color: 'var(--danger)' }}>{createError}</p>
+                )}
+                <button onClick={createSession} disabled={creating} className="btn-primary">
+                  {creating ? 'Đang lưu...' : 'Xác nhận nghỉ ngơi'}
                 </button>
               </>
             )}
