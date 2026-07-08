@@ -184,7 +184,48 @@ export async function POST(req: NextRequest) {
     } else if (sheet === 'sleep_recovery') {
       result = await supabase.from('sleep_recovery_logs').upsert(validation.valid, { onConflict: 'date' })
     } else if (sheet === 'running') {
-      result = await supabase.from('workout_sessions').insert(validation.valid)
+      // Running không có unique constraint trên date → cần detect duplicate thủ công
+      // Lấy tất cả session chạy đã có trong DB theo ngày
+      const dates = validation.valid.map(r => r.date)
+      const { data: existing } = await supabase
+        .from('workout_sessions')
+        .select('date, name_override')
+        .eq('type', 'run')
+        .in('date', dates)
+
+      const existingKeys = new Set(
+        (existing ?? []).map(r => `${r.date}|${r.name_override ?? ''}`)
+      )
+
+      // Chỉ insert những row chưa tồn tại
+      const toInsert = validation.valid.filter(r => {
+        const key = `${r.date}|${r.name_override ?? ''}`
+        return !existingKeys.has(key)
+      })
+
+      const skipped = validation.valid.length - toInsert.length
+
+      if (toInsert.length === 0) {
+        return NextResponse.json({
+          imported: 0,
+          skipped,
+          errors: [],
+          message: `Tất cả ${skipped} buổi chạy đã tồn tại trong database — không có gì được thêm.`
+        })
+      }
+
+      result = await supabase.from('workout_sessions').insert(toInsert)
+
+      if (result?.error) {
+        return NextResponse.json({ error: result.error.message }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        imported: toInsert.length,
+        skipped,
+        errors: [],
+        message: skipped > 0 ? `Đã import ${toInsert.length} buổi. Bỏ qua ${skipped} buổi đã tồn tại.` : undefined
+      })
     } else if (sheet === 'nutrition') {
       result = await supabase.from('nutrition_logs').upsert(validation.valid, { onConflict: 'date' })
     }
