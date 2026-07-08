@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 
 type ValidationError = { sheet: string; row: number; field: string; message: string }
-type ImportResult = { imported: number; errors: ValidationError[] }
+type ImportResult = { imported: number; skipped?: number; errors: ValidationError[]; message?: string }
 
 // ── Export ─────────────────────────────────────────────────────
 async function exportToExcel() {
@@ -280,10 +280,16 @@ export default function DataPage() {
             <p className="font-bold" style={{ color: 'var(--text)' }}>Kết quả import</p>
 
             {/* Summary */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl p-3 text-center" style={{ background: 'var(--success-bg)' }}>
                 <p className="text-2xl font-bold" style={{ color: 'var(--success)' }}>{importResult.totalImported}</p>
-                <p className="text-xs" style={{ color: 'var(--success)' }}>Dòng đã import</p>
+                <p className="text-xs" style={{ color: 'var(--success)' }}>Đã import</p>
+              </div>
+              <div className="rounded-xl p-3 text-center" style={{ background: 'var(--warning-bg)' }}>
+                <p className="text-2xl font-bold" style={{ color: 'var(--warning)' }}>
+                  {importResult.results.reduce((s, r) => s + (r.skipped ?? 0), 0)}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--warning)' }}>Bỏ qua (trùng)</p>
               </div>
               <div className="rounded-xl p-3 text-center" style={{ background: importResult.totalErrors > 0 ? 'var(--danger-bg)' : 'var(--surface-2)' }}>
                 <p className="text-2xl font-bold" style={{ color: importResult.totalErrors > 0 ? 'var(--danger)' : 'var(--text-3)' }}>{importResult.totalErrors}</p>
