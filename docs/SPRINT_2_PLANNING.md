@@ -1,8 +1,9 @@
 # Sprint 2 Planning
 
-**Status: DRAFT — Pending Product Owner Review**
+**Status: ✅ APPROVED — Ready for Implementation**
 **Version Target: v0.2.0**
-**Prerequisites: Sprint 1 (v0.1.0) merged và stable**
+**Prerequisites: Sprint 1 (v0.1.0) CLOSED**
+**Approved by: Product Owner — 2026-07-09**
 
 ---
 
@@ -11,44 +12,132 @@
 Xây dựng Workout Engine đúng kiến trúc:
 - Mỗi Workout Session phải độc lập với Template sau khi tạo
 - Người dùng có thể chỉnh sửa danh sách bài tập trong một session cụ thể
-- Lịch sử tập luyện không bị thay đổi nếu Template bị sửa
+- Lịch sử tập luyện không bị thay đổi nếu Template bị sửa sau này
 
 ---
 
-## Scope (Đề xuất)
+## Architecture Decisions (APPROVED)
 
-### S2-01 — session_exercises table
-Thêm bảng mới `session_exercises` để snapshot template tại thời điểm tạo session.
+### AD-01 — Backward Compatibility: Fallback + Progressive Migration
 
-Các field đề xuất:
-- `id` UUID PK
-- `session_id` FK → `workout_sessions`
-- `exercise_id` FK → `exercises`
-- `display_order` INT
-- `target_sets_override` INT nullable
-- `target_reps_override` TEXT nullable
-- `created_from_template_id` UUID nullable (tracing)
+- Session mới tạo → dùng `session_exercises`
+- Session cũ chưa có `session_exercises` → fallback sang `template_exercises`
+- Migration dần sau, không ép buộc
+- **Hard Cutoff: KHÔNG**
+- **Không được làm mất lịch sử**
 
-### S2-02 — Session creation snapshot
-Khi tạo session từ template:
-→ Server copy `template_exercises` → `session_exercises`
-→ Workout page đọc `session_exercises` thay vì `template_exercises`
+### AD-02 — Snapshot Strategy: Full Snapshot
 
-### S2-03 — Editable workout session
-Trong Workout page, cho phép:
-- Thêm bài tập vào session (không ảnh hưởng template)
-- Xóa bài tập khỏi session
-- Đổi thứ tự bài tập
-- Override target sets/reps cho session cụ thể
+Session phải lưu đầy đủ thông tin bài tập tại thời điểm tạo:
+- `exercise_name` (snapshot tên bài)
+- `muscle_group` (snapshot nhóm cơ)
+- `target_sets` (snapshot mục tiêu)
+- `target_reps` (snapshot mục tiêu)
+- `technique_cue` (snapshot cue kỹ thuật)
 
-### S2-04 — import_hash cho duplicate detection
-Thêm column `import_hash TEXT UNIQUE` vào `workout_sessions`.
-Hash = `sha256(date + type + distance_km + duration_seconds)`.
-Thay thế duplicate detection ở application layer (TD-01, TD-02).
+Nếu Template hoặc Exercise thay đổi sau → Session cũ giữ nguyên toàn bộ.
+**Data Integrity ưu tiên hơn tiết kiệm dung lượng.**
 
-### S2-05 — Nutrition import validation (từ TD-02)
-Validate và test đầy đủ nutrition import.
-Đưa ra khỏi trạng thái Experimental.
+### AD-03 — Import Hash: sha256, không salt
+
+```
+import_hash = sha256(date + type + distance_km + duration_seconds)
+```
+
+Mục tiêu: Import cùng file nhiều lần không tạo duplicate.
+Không dùng salt — collision xảy ra khi 2 buổi chạy có cùng 4 giá trị trên, được coi là cùng 1 buổi.
+
+### AD-04 — Set Management: Không có planned_sets layer
+
+Kiến trúc giữ đơn giản:
+
+```
+WorkoutSession
+  └── SessionExercises   ← target (snapshot từ template)
+        └── WorkoutSets  ← kết quả thực tế
+```
+
+- `session_exercises` lưu target sets/reps/cue
+- `workout_sets` lưu kết quả thực tế (reps, weight, rpe)
+- Thêm set = thêm `WorkoutSet` mới
+- Không cần planned_sets layer trung gian
+
+---
+
+## Scope
+
+### S2-01 — Database schema: session_exercises
+
+```sql
+CREATE TABLE session_exercises (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id            UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
+  exercise_id           UUID REFERENCES exercises(id),
+  -- Full snapshot (AD-02)
+  exercise_name         TEXT NOT NULL,
+  muscle_group          TEXT,
+  target_sets           INT,
+  target_reps           TEXT,
+  technique_cue         TEXT,
+  display_order         INT NOT NULL DEFAULT 0,
+  -- Tracing
+  created_from_template_id UUID,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+Note: `exercise_id` nullable — nếu exercise bị xóa, session vẫn còn snapshot.
+
+### S2-02 — Database schema: import_hash
+
+```sql
+ALTER TABLE workout_sessions
+ADD COLUMN import_hash TEXT;
+
+CREATE UNIQUE INDEX workout_sessions_import_hash_idx
+ON workout_sessions(import_hash)
+WHERE import_hash IS NOT NULL;
+```
+
+Dùng partial unique index — chỉ enforce uniqueness khi `import_hash IS NOT NULL`.
+Sessions tạo qua app (không import) có `import_hash = NULL`, không bị ảnh hưởng.
+
+### S2-03 — Session creation: snapshot template → session_exercises
+
+Khi `POST /api/sessions` với `template_id`:
+1. Server tạo `workout_sessions` record
+2. Server query `template_exercises JOIN exercises` theo `template_id`
+3. Server copy thành `session_exercises` với full snapshot (AD-02)
+4. Client nhận `session.id` → navigate bình thường
+
+### S2-04 — Workout page: đọc session_exercises với fallback
+
+```
+Workout page load:
+  1. Query session_exercises WHERE session_id = ?
+  2. Nếu có kết quả → dùng session_exercises (new path)
+  3. Nếu không có → fallback: query template_exercises (old path, AD-01)
+```
+
+### S2-05 — Editable workout: add/remove/reorder bài tập
+
+Trong Workout page, thêm controls:
+- **Thêm bài**: chọn từ exercise database → insert `session_exercises`
+- **Xóa bài**: delete `session_exercises` record (workout_sets của bài đó vẫn còn)
+- **Đổi thứ tự**: update `display_order` của các `session_exercises`
+- Không ảnh hưởng Template gốc
+
+### S2-06 — Import hash: thay thế application-layer duplicate detection
+
+Thay `(date + name_override)` check bằng:
+```
+hash = sha256(date + type + distance_km + duration_seconds)
+```
+Upsert on `import_hash` thay vì INSERT với check trước.
+
+### S2-07 — Nutrition import: ra khỏi Experimental
+
+Validate và test đầy đủ, cập nhật CHANGELOG.
 
 ---
 
@@ -56,10 +145,11 @@ Validate và test đầy đủ nutrition import.
 
 - UI redesign
 - Dashboard mới
-- AI Coach (cần Anthropic API key)
+- AI Coach
 - Export improvements
 - Running plan / training plan
 - Notification / reminder
+- Workout history per exercise (cross-session comparison)
 
 ---
 
@@ -67,79 +157,51 @@ Validate và test đầy đủ nutrition import.
 
 | Risk | Probability | Impact | Mitigation |
 |---|---|---|---|
-| Migration backfill session_exercises cho sessions cũ | High | High | Fallback: nếu session không có session_exercises → đọc từ template (backward compat) |
-| `import_hash` column thêm vào bảng có data | Medium | Medium | ALTER TABLE không xóa data; cột nullable trước, unique sau khi backfill |
-| Editable workout thay đổi UX flow quen thuộc | Low | Medium | Feature flag hoặc phát triển song song |
+| Fallback logic phức tạp hơn dự kiến | Medium | Medium | Viết unit test cho cả 2 path trước khi deploy |
+| Session cũ có template bị xóa → fallback thất bại | Low | High | Guard: nếu template_id null VÀ không có session_exercises → hiển thị "Session không có dữ liệu bài tập" |
+| import_hash partial index edge case | Low | Low | Test bằng cách import cùng file 3 lần |
+| Snapshot làm tăng dung lượng DB đáng kể | Low | Low | Supabase free tier có 500MB — với ~1000 sessions/year, ước tính <10MB |
 
 ---
 
-## Database Impact
+## Database Impact Summary
 
-### Thay đổi cần thiết
+| Thay đổi | Type | Ảnh hưởng data hiện có |
+|---|---|---|
+| Tạo `session_exercises` table | CREATE TABLE | Không |
+| Thêm `import_hash` column | ALTER TABLE ADD COLUMN | Không (nullable) |
+| Thêm partial unique index | CREATE INDEX | Không |
 
-```sql
--- S2-01
-CREATE TABLE session_exercises (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
-  exercise_id UUID NOT NULL REFERENCES exercises(id),
-  display_order INT NOT NULL DEFAULT 0,
-  target_sets_override INT,
-  target_reps_override TEXT,
-  created_from_template_id UUID,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- S2-04
-ALTER TABLE workout_sessions
-ADD COLUMN import_hash TEXT;
--- Sau khi backfill:
-ALTER TABLE workout_sessions
-ADD CONSTRAINT workout_sessions_import_hash_unique UNIQUE (import_hash);
-```
-
-### Migration cần thiết
-- Backfill `session_exercises` cho sessions cũ (dùng `template_id` hiện có)
-- Backfill `import_hash` cho running sessions đã import
-
----
-
-## Architecture Questions — Cần Review Trước Khi Code
-
-**Q1: Backward compatibility**
-Sessions cũ (pre-Sprint 2) không có `session_exercises`. Workout page sẽ xử lý thế nào?
-- Option A: Fallback — nếu không có `session_exercises` thì đọc từ `template_exercises`
-- Option B: Migration script — backfill tất cả sessions cũ ngay khi deploy
-- Option C: Hard cutoff — chỉ apply cho sessions mới, sessions cũ hiển thị "legacy"
-
-**Q2: Snapshot strategy**
-Khi snapshot template → session_exercises, nên copy những gì?
-- Chỉ exercise list và order (tối giản)
-- Cả target_sets và target_reps (đủ để override)
-- Cả technique_cue (snapshot đầy đủ)
-
-**Q3: Import hash collision**
-Nếu 2 buổi chạy cùng ngày, cùng distance, cùng duration → hash collision → không insert được.
-Cần thêm salt (vd: index thứ tự trong file) vào hash không?
-
-**Q4: Editable workout — set management**
-Hiện tại số set được khởi tạo từ `exercise.target_sets`. Nếu người dùng muốn thêm set thứ 5:
-- Thêm vào `workout_sets` trực tiếp (hiện tại đang làm)
-- Hay cần thêm `planned_sets` trước, rồi mới log actual?
+**Migration Required: YES** (ALTER TABLE + CREATE TABLE + CREATE INDEX)
+**Data at risk: NONE** — tất cả thay đổi là additive
 
 ---
 
 ## Definition of Done (Sprint 2)
 
-- [ ] `session_exercises` table tồn tại trong database
-- [ ] Sessions mới tạo từ template đều có `session_exercises` tương ứng
-- [ ] Sessions cũ không bị break (backward compat hoặc migration)
-- [ ] Workout page đọc từ `session_exercises` thay vì `template_exercises`
-- [ ] Người dùng có thể thêm/xóa bài tập trong session mà không ảnh hưởng template
-- [ ] `import_hash` column tồn tại và enforce uniqueness ở DB layer
+- [ ] `session_exercises` table tồn tại trong Supabase
+- [ ] `import_hash` column tồn tại với partial unique index
+- [ ] Sessions mới tạo từ template có `session_exercises` đầy đủ
+- [ ] Workout page đọc `session_exercises`, fallback sang `template_exercises` nếu không có
+- [ ] Sessions cũ không bị break
+- [ ] Người dùng có thể thêm/xóa/đổi thứ tự bài trong session
+- [ ] Running import dùng `import_hash` — không còn application-layer duplicate check
 - [ ] Nutrition import ra khỏi Experimental
-- [ ] Sprint Report: tất cả tasks có PASS hoặc documented FAIL với reason
+- [ ] Sprint Report: tất cả tasks có PASS hoặc documented FAIL
 
 ---
 
-**⏸ WAITING: Product Owner review và approve trước khi bắt đầu implementation.**
+## Thứ tự Implementation (Đề xuất)
+
+```
+Bước 1: Database migration (S2-01, S2-02) — schema trước
+Bước 2: Session creation snapshot (S2-03) — API trước khi UI
+Bước 3: Workout page fallback (S2-04) — backward compat
+Bước 4: Editable workout (S2-05) — feature mới
+Bước 5: Import hash (S2-06) — replace old logic
+Bước 6: Nutrition validation (S2-07) — cleanup
+```
+
+---
+
+**✅ APPROVED — Chờ lệnh bắt đầu implementation.**
