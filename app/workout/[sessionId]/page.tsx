@@ -49,7 +49,7 @@ export default function WorkoutPage() {
       const { session } = await fetch(`/api/sessions/${sessionId}`).then(r => r.json())
       if (session.type === 'run') { router.replace(`/workout/${sessionId}/run`); return }
       if (!session.template_id) { setLoading(false); return }
-      const exData: Exercise[] = await fetch(`/api/exercises?template_id=${session.template_id}`).then(r => r.json())
+      const exData: Exercise[] = await fetch(`/api/session-exercises?session_id=${sessionId}`).then(r => r.json())
       setExercises(exData)
       const initSets: Record<string, SetEntry[]> = {}
       for (const ex of exData) {
