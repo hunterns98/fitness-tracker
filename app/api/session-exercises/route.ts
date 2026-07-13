@@ -5,12 +5,13 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/session-exercises?session_id=xxx
 //
-// Priority:
-//   1. session_exercises (snapshot, new sessions)
-//   2. template_exercises fallback (old sessions — AD-01: backward compat)
+// Partial Snapshot strategy (ADR-004):
+//   - session_exercises lưu: exercise_id, display_order, target_sets, target_reps, notes
+//   - Exercise metadata (name, muscle_group, technique_cue...) luôn JOIN từ exercises table
 //
-// Returns shape compatible với Exercise type trong workout page:
-//   { id, name, muscle_group, current_weight_kg, target_sets, target_reps, technique_cue }
+// Fallback (ADR-001 backward compat):
+//   1. session_exercises tồn tại → new path (snapshot + JOIN)
+//   2. session_exercises rỗng → fallback: template_exercises + JOIN exercises (session cũ)
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -20,10 +21,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'session_id is required' }, { status: 400 })
   }
 
-  // ── Path 1: session_exercises (snapshot) ──────────────────
+  // ── Path 1: session_exercises snapshot + JOIN exercises ────
   const { data: sessionExercises, error: seError } = await supabase
     .from('session_exercises')
-    .select('id, exercise_id, exercise_name, muscle_group, target_sets, target_reps, technique_cue, display_order')
+    .select(`
+      id,
+      exercise_id,
+      display_order,
+      target_sets,
+      target_reps,
+      notes,
+      created_from_template_id,
+      exercise:exercises(
+        id,
+        name,
+        muscle_group,
+        current_weight_kg,
+        technique_cue
+      )
+    `)
     .eq('session_id', sessionId)
     .order('display_order')
 
@@ -32,42 +48,29 @@ export async function GET(req: NextRequest) {
   }
 
   if (sessionExercises && sessionExercises.length > 0) {
-    // Snapshot tồn tại → new path
-    // Lấy current_weight_kg từ exercises table (live, không snapshot)
-    // vì đây là gợi ý tạ hiện tại, không phải historical
-    const exerciseIds = sessionExercises
-      .filter(se => se.exercise_id != null)
-      .map(se => se.exercise_id as string)
-
-    let weightMap: Record<string, number | null> = {}
-    if (exerciseIds.length > 0) {
-      const { data: exercises } = await supabase
-        .from('exercises')
-        .select('id, current_weight_kg')
-        .in('id', exerciseIds)
-
-      for (const ex of (exercises ?? [])) {
-        weightMap[ex.id] = ex.current_weight_kg
+    // New path: dùng session_exercises với metadata từ exercises table
+    const result = sessionExercises.map(se => {
+      const ex = se.exercise as any
+      return {
+        // id dùng exercise_id để workout_sets JOIN đúng
+        id: se.exercise_id,
+        session_exercise_id: se.id,
+        name: ex?.name ?? 'Bài tập không xác định',
+        muscle_group: ex?.muscle_group ?? null,
+        current_weight_kg: ex?.current_weight_kg ?? null,
+        technique_cue: ex?.technique_cue ?? null,
+        // target từ snapshot (có thể override so với template gốc)
+        target_sets: se.target_sets,
+        target_reps: se.target_reps,
+        notes: se.notes,
+        _source: 'session_exercises',
       }
-    }
-
-    const result = sessionExercises.map(se => ({
-      // Dùng exercise_id làm id để workout_sets vẫn link đúng
-      id: se.exercise_id ?? se.id,
-      session_exercise_id: se.id,       // có thể dùng sau cho edit
-      name: se.exercise_name,
-      muscle_group: se.muscle_group,
-      current_weight_kg: se.exercise_id ? (weightMap[se.exercise_id] ?? null) : null,
-      target_sets: se.target_sets,
-      target_reps: se.target_reps,
-      technique_cue: se.technique_cue,
-      _source: 'snapshot',              // debug field, không hiển thị UI
-    }))
+    })
 
     return NextResponse.json(result)
   }
 
-  // ── Path 2: Fallback sang template_exercises (session cũ — AD-01) ──
+  // ── Path 2: Fallback → template_exercises (session cũ — ADR-001) ──
   const { data: session } = await supabase
     .from('workout_sessions')
     .select('template_id')
@@ -90,7 +93,7 @@ export async function GET(req: NextRequest) {
 
   const fallbackResult = (templateExercises ?? []).map(te => ({
     ...(te.exercise as any),
-    _source: 'template_fallback',       // debug field
+    _source: 'template_fallback',
   }))
 
   return NextResponse.json(fallbackResult)
