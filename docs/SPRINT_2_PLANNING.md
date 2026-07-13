@@ -26,17 +26,26 @@ Xây dựng Workout Engine đúng kiến trúc:
 - **Hard Cutoff: KHÔNG**
 - **Không được làm mất lịch sử**
 
-### AD-02 — Snapshot Strategy: Full Snapshot
+### AD-02 — Snapshot Strategy: Partial Snapshot *(revised từ Full Snapshot)*
 
-Session phải lưu đầy đủ thông tin bài tập tại thời điểm tạo:
-- `exercise_name` (snapshot tên bài)
-- `muscle_group` (snapshot nhóm cơ)
-- `target_sets` (snapshot mục tiêu)
-- `target_reps` (snapshot mục tiêu)
-- `technique_cue` (snapshot cue kỹ thuật)
+`session_exercises` chỉ snapshot dữ liệu thuộc về workout session:
+```
+session_id
+exercise_id             ← FK → exercises
+display_order
+target_sets
+target_reps
+notes
+created_from_template_id
+```
 
-Nếu Template hoặc Exercise thay đổi sau → Session cũ giữ nguyên toàn bộ.
-**Data Integrity ưu tiên hơn tiết kiệm dung lượng.**
+Exercise metadata (name, muscles, image, video, cue, difficulty, equipment) **luôn đọc từ `exercises` table** qua JOIN. Không duplicate.
+
+**Lý do thay đổi từ Full Snapshot:**
+Exercise Library sẽ tiếp tục phát triển. Snapshot metadata sẽ tạo coupling không cần thiết và duplicate dữ liệu.
+
+**Risk được xử lý bởi:** ADR-005 — Soft Delete (deferred Sprint 3).
+Exercise không bao giờ bị hard delete → JOIN luôn resolve được.
 
 ### AD-03 — Import Hash: sha256, không salt
 
@@ -69,24 +78,25 @@ WorkoutSession
 ### S2-01 — Database schema: session_exercises
 
 ```sql
-CREATE TABLE session_exercises (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id            UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
-  exercise_id           UUID REFERENCES exercises(id),
-  -- Full snapshot (AD-02)
-  exercise_name         TEXT NOT NULL,
-  muscle_group          TEXT,
-  target_sets           INT,
-  target_reps           TEXT,
-  technique_cue         TEXT,
-  display_order         INT NOT NULL DEFAULT 0,
+CREATE TABLE IF NOT EXISTS session_exercises (
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id               UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
+  -- NOT NULL: exercise không bao giờ hard delete (Soft Delete — ADR-005)
+  exercise_id              UUID NOT NULL REFERENCES exercises(id),
+  -- Workout-specific data only (Partial Snapshot — ADR-004)
+  display_order            INT NOT NULL DEFAULT 0,
+  target_sets              INT,
+  target_reps              TEXT,
+  notes                    TEXT,
   -- Tracing
   created_from_template_id UUID,
-  created_at            TIMESTAMPTZ DEFAULT NOW()
+  created_at               TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
-Note: `exercise_id` nullable — nếu exercise bị xóa, session vẫn còn snapshot.
+**Không snapshot:** exercise_name, muscle_group, technique_cue, image, video, equipment, difficulty.
+Exercise metadata luôn JOIN từ `exercises` table.
+`exercise_id NOT NULL` vì exercise không bao giờ bị hard delete (ADR-005 — Soft Delete).
 
 ### S2-02 — Database schema: import_hash
 
@@ -107,7 +117,7 @@ Sessions tạo qua app (không import) có `import_hash = NULL`, không bị ả
 Khi `POST /api/sessions` với `template_id`:
 1. Server tạo `workout_sessions` record
 2. Server query `template_exercises JOIN exercises` theo `template_id`
-3. Server copy thành `session_exercises` với full snapshot (AD-02)
+3. Server copy thành `session_exercises` với **Partial Snapshot** (ADR-004): chỉ lưu `exercise_id`, `display_order`, `target_sets`, `target_reps`
 4. Client nhận `session.id` → navigate bình thường
 
 ### S2-04 — Workout page: đọc session_exercises với fallback
