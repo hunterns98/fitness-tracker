@@ -1,152 +1,303 @@
-# Architecture Decision Records (ADR)
+# FITNESS TRACKER
+Architecture Decisions (ADR)
 
-Tài liệu ghi lại các quyết định kiến trúc quan trọng của dự án.
-Format: [ADR-ID] — Tiêu đề — Ngày — Status
+Version: 1.0
 
----
+=========================================
+PROJECT PHILOSOPHY
+=========================================
 
-## ADR-001 — Single User App (No Multi-tenancy)
-**Date:** Sprint 0
-**Status:** ACCEPTED
+Fitness Tracker không phải một ứng dụng AI.
 
-**Context:** App chỉ phục vụ 1 người dùng.
+Đây là một hệ thống lưu trữ dữ liệu tập luyện
+được thiết kế để sử dụng nhiều năm.
 
-**Decision:** Không implement multi-tenancy, không có bảng `users`. Auth dùng single password + iron-session cookie. Supabase service role key chỉ tồn tại ở server — client không bao giờ cầm key trực tiếp.
+Triết lý phát triển:
 
-**Consequences:** Bỏ qua toàn bộ complexity của multi-user (RLS, billing, role permissions). Nếu sau này mở rộng cho nhiều user sẽ cần refactor lớn.
+- Offline First
+- Free First
+- AI Ready
+- Data First
+- Long-term Maintainable
 
----
+AI chỉ là công cụ phân tích dữ liệu,
+không phải một phần bắt buộc của hệ thống.
 
-## ADR-002 — Offline-first / Browser-first (No Native App)
-**Date:** Sprint 0
-**Status:** ACCEPTED
+=========================================
+ADR-001
+Database First
+=========================================
 
-**Decision:** PWA (Progressive Web App) thay vì native iOS/Android. Deploy trên Vercel. Truy cập qua trình duyệt, có thể "Add to Home Screen".
+Mọi dữ liệu phải được lưu đầy đủ.
 
-**Consequences:** Không cần App Store. Deploy ngay khi push code. Hạn chế: không có background sync, không có push notification.
+Không tính toán từ UI.
 
----
+Dashboard chỉ đọc dữ liệu.
 
-## ADR-003 — Supabase as Database (No Self-hosted)
-**Date:** Sprint 0
-**Status:** ACCEPTED
+Không lưu dữ liệu tạm trong component.
 
-**Decision:** Supabase (managed Postgres) thay vì self-hosted. Free tier đủ dùng cho 1 user.
+=========================================
+ADR-002
+Template chỉ dùng để tạo Session
+=========================================
 
-**Consequences:** Không cần quản lý server, backup tự động. Dependency vào Supabase uptime.
+Workout Template chỉ là khuôn mẫu.
 
----
+Khi tạo Workout Session:
 
-## ADR-004 — Workout Session Snapshot: Partial Snapshot
-**Date:** Sprint 2 — 2026-07-09
-**Status:** ACCEPTED
+Template
+↓
 
-**Context:**
-Sprint 2 ban đầu đề xuất Full Snapshot (copy toàn bộ exercise metadata vào session_exercises). Sau review, Product Owner quyết định Partial Snapshot.
+Session
 
-**Decision:**
-`session_exercises` chỉ snapshot dữ liệu thuộc về workout session:
-```
-session_id
-exercise_id             ← FK → exercises (không nullable)
-display_order
-target_sets
-target_reps
-notes
-created_from_template_id
-```
+Sau đó Session tồn tại độc lập.
 
-Exercise metadata (name, muscles, image, video, cue, difficulty, equipment) **luôn đọc từ `exercises` table** qua JOIN.
+Template thay đổi
+không được ảnh hưởng Session đã tạo.
 
-**Lý do:**
-- Exercise Library sẽ tiếp tục phát triển (ảnh, video, muscle map, AI Coach cue...)
-- Không muốn duplicate dữ liệu
-- Nếu cue được cải thiện → tất cả session (kể cả cũ) hưởng lợi
-- Schema coupling giữa session_exercises và exercise metadata là không cần thiết
+=========================================
+ADR-003
+Session là nguồn dữ liệu chính
+=========================================
 
-**Risk được giải quyết bởi ADR-005:**
-Exercise bị xóa → session cũ mất JOIN → giải quyết bằng Soft Delete thay vì hard delete.
+Workout History
 
-**Consequences:**
-- Session không hoàn toàn độc lập nếu exercise bị xóa (xem ADR-005)
-- JOIN required mỗi lần load workout page — không đáng kể ở scale hiện tại
-- Historical accuracy cho cue không được đảm bảo (cue mới override cue cũ)
+↓
 
----
+Session
 
-## ADR-005 — Exercise Library: Soft Delete thay vì Hard Delete
-**Date:** Sprint 2 — 2026-07-09
-**Status:** ACCEPTED — Implementation deferred to Sprint 3
+↓
 
-**Context:**
-ADR-004 chọn Partial Snapshot, dẫn đến `exercise_id` trong `session_exercises` phải luôn resolve được. Nếu exercise bị hard delete, session cũ mất JOIN.
+Session Exercises
 
-**Decision:**
-Exercise Library dùng Soft Delete. Exercise table bổ sung:
-```sql
-archived_at TIMESTAMPTZ DEFAULT NULL
-```
-`archived_at IS NULL` = active, `archived_at IS NOT NULL` = archived.
+không đọc trực tiếp Template.
 
-**Behavior của Archived Exercise:**
-- ❌ Không xuất hiện trong Exercise Picker khi tạo Template mới
-- ❌ Không xuất hiện trong Exercise Library UI
-- ✅ Vẫn tồn tại trong database
-- ✅ Session cũ JOIN bình thường
-- ✅ AI Coach vẫn đọc được
-- ✅ Images, cues, muscle map vẫn giữ nguyên
-- ✅ Workout history không bị ảnh hưởng
+=========================================
+ADR-004
+Partial Snapshot
+=========================================
 
-**Không dùng:**
-- Hard DELETE (mất data, session cũ bị break)
-- `is_active BOOLEAN` (ít expressive hơn timestamp — không biết archived khi nào)
+Session Exercise chỉ lưu:
 
-**Implementation:** Sprint 3
-```sql
-ALTER TABLE exercises ADD COLUMN archived_at TIMESTAMPTZ DEFAULT NULL;
-CREATE INDEX exercises_archived_at_idx ON exercises(archived_at) WHERE archived_at IS NULL;
-```
+- session_id
+- exercise_id
+- display_order
+- target_sets
+- target_reps
+- notes
+- created_from_template_id
 
-**Filter trong queries:**
-```sql
--- Chỉ lấy active exercises
-SELECT * FROM exercises WHERE archived_at IS NULL;
+Không lưu:
 
--- Session JOIN vẫn lấy cả archived (để hiển thị history)
-SELECT se.*, ex.name, ex.technique_cue
-FROM session_exercises se
-JOIN exercises ex ON ex.id = se.exercise_id;
-```
+- exercise_name
+- muscles
+- cue
+- image
+- video
+- equipment
+- difficulty
 
----
+Metadata luôn đọc từ Exercise Library.
 
-## ADR-006 — Import Idempotency: import_hash (SHA256, No Salt)
-**Date:** Sprint 2 — 2026-07-09
-**Status:** ACCEPTED
+Lý do:
 
-**Decision:**
-```
-import_hash = sha256(date + type + distance_km + duration_seconds)
-```
+- không duplicate data
+- dễ mở rộng
+- AI luôn đọc metadata mới nhất
+- Exercise Library phát triển độc lập
 
-Partial unique index trên `workout_sessions(import_hash) WHERE import_hash IS NOT NULL`.
-Sessions tạo qua app có `import_hash = NULL`, không bị ảnh hưởng.
+=========================================
+ADR-005
+Exercise Library dùng Soft Delete
+=========================================
 
-**Lý do không dùng salt:** Hash phục vụ idempotent import. Nếu 2 rows có cùng 4 giá trị trên, được coi là cùng 1 buổi tập.
+Exercise sẽ không bị DELETE.
 
-**Collision edge case:** 2 buổi chạy cùng ngày, cùng distance, cùng duration → hash trùng → chỉ import 1. Chấp nhận được ở use case hiện tại (1 buổi/ngày).
+Thay vào đó:
 
----
+is_active
 
-## ADR-007 — Set Management: Không có Planned Sets Layer
-**Date:** Sprint 2 — 2026-07-09
-**Status:** ACCEPTED
+hoặc
 
-**Decision:**
-```
-WorkoutSession
-  └── session_exercises   ← target (snapshot từ template)
-        └── workout_sets  ← kết quả thực tế
-```
+archived_at
 
-Không có `planned_sets` layer trung gian. Thêm set = thêm `workout_set` mới. Simple và đủ dùng.
+Exercise Archive:
+
+✓ không xuất hiện khi tạo Template
+
+✓ không xuất hiện trong Exercise Picker
+
+✓ Session cũ vẫn đọc được
+
+✓ AI vẫn đọc được
+
+✓ Images vẫn giữ
+
+=========================================
+ADR-006
+Import phải Idempotent
+=========================================
+
+Import nhiều lần
+
+↓
+
+Không được duplicate.
+
+Sử dụng
+
+import_hash
+
+để xác định dữ liệu đã tồn tại.
+
+Application layer
+không chịu trách nhiệm chống duplicate.
+
+Database phải đảm bảo.
+
+=========================================
+ADR-007
+AI Ready
+=========================================
+
+Không tích hợp AI trực tiếp.
+
+Không phụ thuộc:
+
+- Claude
+
+- ChatGPT
+
+- Gemini
+
+- OpenAI API
+
+- Anthropic API
+
+Ứng dụng chỉ cần:
+
+Export
+
+↓
+
+Markdown
+
+JSON
+
+CSV
+
+↓
+
+AI phân tích.
+
+=========================================
+ADR-008
+Exercise Package
+=========================================
+
+Mỗi bài tập sẽ là một package hoàn chỉnh.
+
+Exercise gồm:
+
+- Name
+
+- Category
+
+- Primary Muscles
+
+- Secondary Muscles
+
+- Stabilizer
+
+- Equipment
+
+- Difficulty
+
+- Technique Cue
+
+- Common Mistakes
+
+- Breathing
+
+- Range of Motion
+
+- Image
+
+- Muscle Highlight Image
+
+- Animation (future)
+
+- Video (future)
+
+- Tags
+
+App chỉ render package.
+
+Không hardcode dữ liệu trong code.
+
+=========================================
+ADR-009
+Exercise Library là nguồn dữ liệu duy nhất
+=========================================
+
+Workout
+
+Dashboard
+
+Calendar
+
+History
+
+AI Export
+
+đều đọc cùng một Exercise Library.
+
+Không tạo nhiều bản copy.
+
+=========================================
+ADR-010
+Commercial-grade Architecture
+=========================================
+
+Ưu tiên:
+
+Maintainability
+
+>
+
+Performance
+
+>
+
+Features
+
+Code dễ mở rộng
+quan trọng hơn code ngắn.
+
+Không thêm shortcut
+làm hỏng kiến trúc.
+
+=========================================
+LONG TERM GOAL
+=========================================
+
+Ứng dụng phải có thể sử dụng ổn định
+trong nhiều năm.
+
+Có thể mở rộng:
+
+✓ AI Coach
+
+✓ Exercise Images
+
+✓ Muscle Maps
+
+✓ Videos
+
+✓ Export
+
+✓ Mobile App
+
+✓ PWA
+
+mà không cần thay đổi kiến trúc nền.
