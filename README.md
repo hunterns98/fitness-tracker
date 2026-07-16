@@ -141,3 +141,29 @@ supabase/schema.sql           ← Chạy 1 lần trong Supabase SQL Editor
 - **Bạn chỉ cần**: trình duyệt + GitHub account + Vercel account + Supabase account
 
 Đây đúng với workflow game của bạn (Ma Sói, Flip 7...), chỉ thay Firebase bằng Supabase và GitHub Pages bằng Vercel.
+# Fitness Tracker
+
+Personal Fitness Tracker
+
+## Features
+
+- Workout
+- Running
+- Nutrition
+- Sleep
+- Dashboard
+
+## Tech Stack
+
+- Next.js
+- Supabase
+- Tailwind
+- Vercel
+
+## Development
+
+See:
+
+- ROADMAP.md
+- CHANGELOG.md
+- docs/ARCHITECTURE.md
