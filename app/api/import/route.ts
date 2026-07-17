@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,19 @@ function parseNum(v: any): number | null {
 function parseStr(v: any): string | null {
   if (v === null || v === undefined || v === '') return null
   return String(v).trim()
+}
+
+// ADR-011 canonical serialization for import_hash — MUST stay byte-identical
+// to the SQL formula used in supabase/sprint3_backfill_import_hash.sql.
+// Verified 2026-07-17: matches all 22 backfilled historical sessions exactly.
+function computeImportHash(input: {
+  date: string
+  type: string
+  distance_km: number
+  duration_seconds: number
+}): string {
+  const canonical = `${input.date}|${input.type}|${input.distance_km.toFixed(2)}|${input.duration_seconds}`
+  return crypto.createHash('sha256').update(canonical).digest('hex')
 }
 
 // Validate body_metrics rows
@@ -184,33 +198,69 @@ export async function POST(req: NextRequest) {
     } else if (sheet === 'sleep_recovery') {
       result = await supabase.from('sleep_recovery_logs').upsert(validation.valid, { onConflict: 'date' })
     } else if (sheet === 'running') {
-      // Running không có unique constraint trên date → cần detect duplicate thủ công
-      // Lấy tất cả session chạy đã có trong DB theo ngày
-      const dates = validation.valid.map(r => r.date)
-      const { data: existing } = await supabase
+      // ============================================================
+      // Task 3 (Sprint 3 Phase 0.2) — import_hash is the SOLE dedup
+      // mechanism for Running import. No fallback to
+      // (date, name_override) is kept — per explicit decision.
+      // Ref: ADR-006, ADR-008, ADR-011.
+      // ============================================================
+
+      // Compute import_hash for every valid row. distance_km / duration_seconds
+      // are required for hashing — rows missing either are rejected as
+      // validation errors rather than hashed with placeholder values,
+      // since that would risk hash collisions across unrelated sessions.
+      const rowsWithHash: (ImportRow & { import_hash: string })[] = []
+      const hashErrors: ValidationError[] = []
+
+      for (let i = 0; i < validation.valid.length; i++) {
+        const r = validation.valid[i]
+        if (r.distance_km === null || r.duration_seconds === null) {
+          hashErrors.push({
+            sheet: 'Running',
+            row: i + 2,
+            field: r.distance_km === null ? 'distance_km' : 'duration_minutes',
+            message: 'Thiếu quãng đường hoặc thời gian — không thể tính import_hash để chống trùng lặp',
+          })
+          continue
+        }
+        rowsWithHash.push({
+          ...r,
+          import_hash: computeImportHash({
+            date: r.date,
+            type: r.type,
+            distance_km: r.distance_km,
+            duration_seconds: r.duration_seconds,
+          }),
+        })
+      }
+
+      if (hashErrors.length > 0) {
+        return NextResponse.json({ errors: hashErrors, valid_count: rowsWithHash.length }, { status: 422 })
+      }
+
+      // Look up which of these hashes already exist in DB
+      const hashes = rowsWithHash.map(r => r.import_hash)
+      const { data: existing, error: lookupError } = await supabase
         .from('workout_sessions')
-        .select('date, name_override')
+        .select('import_hash')
         .eq('type', 'run')
-        .in('date', dates)
+        .in('import_hash', hashes)
 
-      const existingKeys = new Set(
-        (existing ?? []).map(r => `${r.date}|${r.name_override ?? ''}`)
-      )
+      if (lookupError) {
+        return NextResponse.json({ error: lookupError.message }, { status: 500 })
+      }
 
-      // Chỉ insert những row chưa tồn tại
-      const toInsert = validation.valid.filter(r => {
-        const key = `${r.date}|${r.name_override ?? ''}`
-        return !existingKeys.has(key)
-      })
+      const existingHashes = new Set((existing ?? []).map(r => r.import_hash).filter(Boolean))
 
-      const skipped = validation.valid.length - toInsert.length
+      const toInsert = rowsWithHash.filter(r => !existingHashes.has(r.import_hash))
+      const skipped = rowsWithHash.length - toInsert.length
 
       if (toInsert.length === 0) {
         return NextResponse.json({
           imported: 0,
           skipped,
           errors: [],
-          message: `Tất cả ${skipped} buổi chạy đã tồn tại trong database — không có gì được thêm.`
+          message: `Tất cả ${skipped} buổi chạy đã tồn tại trong database (import_hash trùng) — không có gì được thêm.`
         })
       }
 
@@ -224,7 +274,7 @@ export async function POST(req: NextRequest) {
         imported: toInsert.length,
         skipped,
         errors: [],
-        message: skipped > 0 ? `Đã import ${toInsert.length} buổi. Bỏ qua ${skipped} buổi đã tồn tại.` : undefined
+        message: skipped > 0 ? `Đã import ${toInsert.length} buổi. Bỏ qua ${skipped} buổi đã tồn tại (import_hash trùng).` : undefined
       })
     } else if (sheet === 'nutrition') {
       result = await supabase.from('nutrition_logs').upsert(validation.valid, { onConflict: 'date' })
