@@ -191,113 +191,68 @@ CSV
 AI phân tích.
 
 =========================================
-ADR-008
-Exercise Package
-=========================================
+---
 
-Mỗi bài tập sẽ là một package hoàn chỉnh.
+## ADR-008 — Import Hash: Adopt Formula, Backfill Legacy Data
+**Date:** Sprint 3 Phase 0 — 2026-07-17
+**Status:** ACCEPTED
 
-Exercise gồm:
+**Context:**
+ADR-006 defined the `import_hash` formula but was never implemented in code (confirmed via audit — Sprint 3 Phase 0 verification). 20 historical Running sessions were already imported prior to this decision, all with implicit `import_hash = NULL`.
 
-- Name
+**Decision:**
+- Adopt ADR-006 formula as-is: `import_hash = sha256(date + type + distance_km + duration_seconds)`, no salt.
+- Backfill `import_hash` for the 20 existing historical Running sessions via a one-time migration script, computed with the same formula.
+- Sessions created through the app UI (not via import) continue to have `import_hash = NULL` permanently — unchanged from ADR-006.
+- Replace application-layer `(date, name_override)` duplicate detection in `api/import/route.ts` with `upsert` on `import_hash`.
 
-- Category
+**Rollout Order (strict sequence — do not parallelize):**
+1. `ALTER TABLE workout_sessions ADD COLUMN import_hash TEXT` + partial unique index (schema first, no app behavior change yet).
+2. Run one-time backfill script against the 20 existing Running sessions — verify row count matches before proceeding.
+3. Only after step 2 is confirmed complete: deploy the code change in `api/import/route.ts` that switches dedup logic from `(date, name_override)` to `import_hash` upsert.
 
-- Primary Muscles
+Deploying step 3 before step 2 completes would cause the 20 legacy sessions (still `import_hash = NULL`) to no longer be protected by the old `(date, name_override)` check, risking duplicate creation on next import.
 
-- Secondary Muscles
+**Consequences:**
+- Re-importing the original historical Excel file will correctly recognize the 20 existing sessions and skip them.
+- New Running imports become idempotent by hash, closing TD-01.
+- Requires the 3-step rollout above; skipping or reordering steps reintroduces duplicate risk during the transition window.
 
-- Stabilizer
+## ADR-009 — Remove Duplicate Dashboard Routes; Enforce `/api/*` Convention
+**Date:** Sprint 3 Phase 0 — 2026-07-17
+**Status:** ACCEPTED
 
-- Equipment
+**Context:**
+Four route files existed outside the `app/api/*` convention: `app/dashboard/{body,recovery,running,strength}/route.ts`. Two were byte-identical duplicates of their `app/api/dashboard/*` counterparts; two contained diverging query logic. Confirmed via code review that no client code calls these paths directly — they are live (Next.js serves any `route.ts` under `app/`) but orphaned.
 
-- Difficulty
+**Decision:**
+- Delete all four files under `app/dashboard/*/route.ts`.
+- Formal convention going forward: **all API routes must live under `app/api/*`**. No exceptions.
 
-- Technique Cue
+**Consequences:**
+- Removes dead, reachable endpoints with no test coverage or intentional ownership.
+- Eliminates risk of divergent duplicate logic (`running`, `strength` variants) accidentally being wired up in future refactors.
+- Sprint 3 (Exercise Library) route additions must follow this convention.
 
-- Common Mistakes
+---
 
-- Breathing
+## ADR-010 — AI Coach Downgraded to Experimental
+**Date:** Sprint 3 Phase 0 — 2026-07-17
+**Status:** ACCEPTED
 
-- Range of Motion
+**Context:**
+- `app/api/ai-coach/route.ts` calls the Anthropic API (`api.anthropic.com`) directly at request time.
+- `PROJECT_ROADMAP.txt`, Sprint 7 ("AI Export"), states: *"Không tích hợp AI. Không gọi API. Không cần API Key. Không phát sinh chi phí."*
+- `PROJECT_ROADMAP.txt` lists "AI Coach" only under the "FUTURE IDEAS" section. It does not appear in Sprint 1 or Sprint 2 Planning scope.
+- Verified (Sprint 3 Phase 0, V2 — runtime check): `ANTHROPIC_API_KEY` is not configured in Vercel Environment Variables.
 
-- Image
+**Decision:**
+- AI Coach status: **Experimental**.
+- Remove the `🤖 AI Coach` entry point from the Dashboard header.
+- No further engineering time on its runtime bugs (missing `x-api-key`/`anthropic-version` headers) under this status.
+- Code remains in the repository, unremoved.
+- Any future change to this status requires a Sprint Planning entry.
 
-- Muscle Highlight Image
-
-- Animation (future)
-
-- Video (future)
-
-- Tags
-
-App chỉ render package.
-
-Không hardcode dữ liệu trong code.
-
-=========================================
-ADR-009
-Exercise Library là nguồn dữ liệu duy nhất
-=========================================
-
-Workout
-
-Dashboard
-
-Calendar
-
-History
-
-AI Export
-
-đều đọc cùng một Exercise Library.
-
-Không tạo nhiều bản copy.
-
-=========================================
-ADR-010
-Commercial-grade Architecture
-=========================================
-
-Ưu tiên:
-
-Maintainability
-
->
-
-Performance
-
->
-
-Features
-
-Code dễ mở rộng
-quan trọng hơn code ngắn.
-
-Không thêm shortcut
-làm hỏng kiến trúc.
-
-=========================================
-LONG TERM GOAL
-=========================================
-
-Ứng dụng phải có thể sử dụng ổn định
-trong nhiều năm.
-
-Có thể mở rộng:
-
-✓ AI Coach
-
-✓ Exercise Images
-
-✓ Muscle Maps
-
-✓ Videos
-
-✓ Export
-
-✓ Mobile App
-
-✓ PWA
-
-mà không cần thay đổi kiến trúc nền.
+**Consequences:**
+- Dashboard UI no longer surfaces this feature as a primary navigation item.
+- Feature remains present in code but unadvertised, pending a future decision.
