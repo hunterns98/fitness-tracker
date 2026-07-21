@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
+import { stripDiacritics } from '@/lib/text'
 
 type ValidationError = { sheet: string; row: number; field: string; message: string }
 type ImportResult = { imported: number; skipped?: number; errors: ValidationError[]; message?: string }
@@ -110,12 +111,16 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName])
     if (!rows.length) continue
 
-    // Normalize keys: remove units from column headers
+    // Normalize keys: strip Vietnamese diacritics, then remove units from
+    // column headers. Task 4 (Sprint 3 Phase 0.3) — diacritics must be
+    // stripped BEFORE slugifying, otherwise headers like "Cân nặng (kg)"
+    // collapse to unrecognizable keys (e.g. "c_n_n_ng") instead of
+    // matching fieldMap (e.g. "can_nang").
     const normalized = rows.map((r: any) => {
       const out: Record<string, any> = {}
       for (const [k, v] of Object.entries(r)) {
         // Extract field name from "Field name (unit)" pattern
-        const key = k.split('(')[0].trim()
+        const key = stripDiacritics(k).split('(')[0].trim()
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_+|_+$/g, '')
@@ -144,6 +149,15 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
           hr_max: 'max_hr',
           cam_giac: 'feeling_note',
           ghi_chu: 'note',
+          // Task 5 (Sprint 3 Phase 0.3) — Nutrition fields, matching real
+          // historical file headers (Dinh_dưỡng_từ_ngày_...txt). Previously
+          // absent, causing all nutrition values to import as null.
+          protein: 'protein_g',
+          carbs: 'carbs_g',
+          chat_beo: 'fat_g',
+          chat_xo: 'fiber_g',
+          nuoc: 'water_adequate',
+          est_calo_in: 'calories',
         }
         out[fieldMap[key] ?? key] = v
       }
