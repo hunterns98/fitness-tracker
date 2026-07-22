@@ -7,8 +7,13 @@ import { stripDiacritics } from '@/lib/text'
 type ValidationError = { sheet: string; row: number; field: string; message: string }
 type ImportResult = { imported: number; skipped?: number; errors: ValidationError[]; message?: string }
 
-// ── Export ─────────────────────────────────────────────────────
-async function exportToExcel() {
+// ── Export: Data (fitness-data.xlsx) ────────────────────────────
+// Task 6 (Sprint 3 Phase 0.4): split from the old exportToExcel().
+// Contains ONLY real data sheets — no Template sheets. This is the
+// artifact that closes the "re-import produces 3 errors on row 2"
+// bug, since Template placeholder rows can no longer be present in
+// the same workbook as real data.
+async function exportDataToExcel() {
   const res = await fetch('/api/export')
   const data = await res.json()
 
@@ -69,21 +74,36 @@ async function exportToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(setRows.length ? setRows : [{ 'Session ID': '' }]), 'Workout Sets')
 
-  // Sheet 5: Template for import
+  XLSX.writeFile(wb, 'fitness-data.xlsx')
+}
+
+// ── Export: Import Templates (fitness-import-templates.xlsx) ───
+// Task 6: split from the old exportToExcel(). Contains ONLY the 4
+// template sheets, one workbook, sheet names UNCHANGED (Template -
+// Body / Sleep / Running / Nutrition) so SHEET_MAP below needs no
+// changes. Template - Nutrition is new (previously missing entirely).
+async function exportImportTemplates() {
+  const wb = XLSX.utils.book_new()
+
   const templateBody = [{ 'date': 'YYYY-MM-DD', 'weight_kg': 62.5, 'body_fat_pct': 17.2, 'lean_mass_kg': 51.7, 'waist_cm': 79, 'note': 'Ghi chú tuỳ chọn' }]
   const templateSleep = [{ 'date': 'YYYY-MM-DD', 'resting_hr': 60, 'sleep_score': 85, 'sleep_duration_min': 450, 'wake_count': 1, 'energy_level': 'Tốt', 'note': '' }]
   const templateRun = [{ 'date': 'YYYY-MM-DD', 'name': 'Easy Run', 'duration_minutes': 50, 'distance_km': 7.0, 'avg_pace_mmss': '8:30', 'avg_hr': 140, 'max_hr': 165, 'calories': 450, 'feeling_note': '' }]
+  // New: Template - Nutrition, matching validateNutrition() field set exactly,
+  // including water_adequate (per revised Task 6 scope).
+  const templateNutrition = [{ 'date': 'YYYY-MM-DD', 'calories': 1950, 'protein_g': 155, 'carbs_g': 175, 'fat_g': 65, 'fiber_g': 10, 'water_adequate': true, 'note': '' }]
 
-  const ws5 = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateBody), 'Template - Body')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateSleep), 'Template - Sleep')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateRun), 'Template - Running')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateNutrition), 'Template - Nutrition')
 
-  const today = new Date().toISOString().split('T')[0]
-  XLSX.writeFile(wb, `fitness-tracker-${today}.xlsx`)
+  XLSX.writeFile(wb, 'fitness-import-templates.xlsx')
 }
 
 // ── Import ─────────────────────────────────────────────────────
+// UNCHANGED from Task 4/5 — SHEET_MAP, fieldMap, normalization logic
+// all identical. Splitting export into two files does not require
+// any change here.
 async function importFromFile(file: File): Promise<{ results: ImportResult[]; totalImported: number; totalErrors: number }> {
   const arrayBuffer = await file.arrayBuffer()
   const wb = XLSX.read(arrayBuffer, { type: 'array' })
@@ -111,11 +131,9 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName])
     if (!rows.length) continue
 
-    // Normalize keys: strip Vietnamese diacritics, then remove units from
-    // column headers. Task 4 (Sprint 3 Phase 0.3) — diacritics must be
-    // stripped BEFORE slugifying, otherwise headers like "Cân nặng (kg)"
-    // collapse to unrecognizable keys (e.g. "c_n_n_ng") instead of
-    // matching fieldMap (e.g. "can_nang").
+    // Normalize keys: strip Vietnamese diacritics (Task 4), then remove
+    // units from column headers, then map to known field names (Task 5
+    // added Nutrition fields).
     const normalized = rows.map((r: any) => {
       const out: Record<string, any> = {}
       for (const [k, v] of Object.entries(r)) {
@@ -149,9 +167,6 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
           hr_max: 'max_hr',
           cam_giac: 'feeling_note',
           ghi_chu: 'note',
-          // Task 5 (Sprint 3 Phase 0.3) — Nutrition fields, matching real
-          // historical file headers (Dinh_dưỡng_từ_ngày_...txt). Previously
-          // absent, causing all nutrition values to import as null.
           protein: 'protein_g',
           carbs: 'carbs_g',
           chat_beo: 'fat_g',
@@ -190,16 +205,24 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
 export default function DataPage() {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [exporting, setExporting] = useState(false)
+  const [exportingData, setExportingData] = useState(false)
+  const [exportingTemplates, setExportingTemplates] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ totalImported: number; totalErrors: number; results: ImportResult[] } | null>(null)
   const [error, setError] = useState('')
 
-  async function handleExport() {
-    setExporting(true)
-    try { await exportToExcel() }
+  async function handleExportData() {
+    setExportingData(true)
+    try { await exportDataToExcel() }
     catch (e: any) { setError(e.message) }
-    setExporting(false)
+    setExportingData(false)
+  }
+
+  async function handleExportTemplates() {
+    setExportingTemplates(true)
+    try { await exportImportTemplates() }
+    catch (e: any) { setError(e.message) }
+    setExportingTemplates(false)
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -230,49 +253,64 @@ export default function DataPage() {
       </div>
 
       <div className="px-4 pt-5 space-y-4 fade-in">
-        {/* Export */}
+        {/* ① Export Data */}
         <div className="card p-5 space-y-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--success-bg)' }}>📥</div>
             <div>
-              <p className="font-bold" style={{ color: 'var(--text)' }}>Export dữ liệu</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Tải toàn bộ dữ liệu ra file Excel</p>
+              <p className="font-bold" style={{ color: 'var(--text)' }}>fitness-data.xlsx</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Toàn bộ dữ liệu thật — backup / xem lại (KHÔNG dùng để nhập liệu)</p>
             </div>
           </div>
 
           <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--surface-2)' }}>
-            <p className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>File Excel sẽ chứa các sheet:</p>
-            {['📋 Body Metrics (cân nặng, body fat, vòng eo...)', '😴 Sleep & Recovery (resting HR, điểm ngủ...)', '🏋️ Workout Sessions (tất cả buổi tập)', '💪 Workout Sets (từng set kháng lực)', '📝 Template - sẵn sàng để nhập dữ liệu cũ'].map(item => (
+            <p className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>Sheet trong file này:</p>
+            {['📋 Body Metrics', '😴 Sleep & Recovery', '🏋️ Workout Sessions', '💪 Workout Sets'].map(item => (
               <p key={item} className="text-xs" style={{ color: 'var(--text-2)' }}>{item}</p>
             ))}
           </div>
 
-          <button onClick={handleExport} disabled={exporting} className="btn-primary"
+          <button onClick={handleExportData} disabled={exportingData} className="btn-primary"
             style={{ background: 'var(--success)' }}>
-            {exporting ? 'Đang tạo file...' : '⬇️ Tải file Excel'}
+            {exportingData ? 'Đang tạo file...' : '⬇️ Tải fitness-data.xlsx'}
           </button>
         </div>
 
-        {/* Import */}
+        {/* ② Import Templates */}
         <div className="card p-5 space-y-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--brand-light)' }}>📤</div>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--brand-light)' }}>📝</div>
+            <div>
+              <p className="font-bold" style={{ color: 'var(--text)' }}>fitness-import-templates.xlsx</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Mẫu để điền dữ liệu mới hoặc lịch sử, rồi import ngược lại</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--surface-2)' }}>
+            <p className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>Sheet trong file này:</p>
+            {['⚖️ Template - Body', '😴 Template - Sleep', '🏃 Template - Running', '🥗 Template - Nutrition'].map(item => (
+              <p key={item} className="text-xs" style={{ color: 'var(--text-2)' }}>{item}</p>
+            ))}
+          </div>
+
+          <button onClick={handleExportTemplates} disabled={exportingTemplates} className="btn-primary">
+            {exportingTemplates ? 'Đang tạo file...' : '📝 Tải fitness-import-templates.xlsx'}
+          </button>
+        </div>
+
+        {/* ③ Import */}
+        <div className="card p-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--warning-bg)' }}>📤</div>
             <div>
               <p className="font-bold" style={{ color: 'var(--text)' }}>Import dữ liệu</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Nhập dữ liệu từ file Excel vào app</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Dùng file ② sau khi đã điền, hoặc file ① nếu muốn khôi phục</p>
             </div>
           </div>
 
           <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--warning-bg)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--warning)' }}>⚠️ Lưu ý trước khi import:</p>
-            <p className="text-xs" style={{ color: 'var(--warning)' }}>Dùng template từ file Export để đảm bảo đúng format. Dữ liệu import sẽ ghi đè nếu trùng ngày (body metrics, sleep). Các buổi chạy sẽ được thêm mới.</p>
-          </div>
-
-          <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--surface-2)' }}>
-            <p className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>Sheet được hỗ trợ import:</p>
-            {['Body Metrics / Template - Body → cập nhật cân nặng, body fat', 'Sleep & Recovery / Template - Sleep → cập nhật giấc ngủ', 'Template - Running → thêm buổi chạy bộ'].map(item => (
-              <p key={item} className="text-xs" style={{ color: 'var(--text-2)' }}>• {item}</p>
-            ))}
+            <p className="text-xs" style={{ color: 'var(--warning)' }}>Dữ liệu import sẽ ghi đè nếu trùng ngày (body metrics, sleep, nutrition). Các buổi chạy sẽ được thêm mới, tự động bỏ qua nếu đã tồn tại.</p>
           </div>
 
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" />
@@ -336,10 +374,10 @@ export default function DataPage() {
           <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>💡 Cách nhập dữ liệu lịch sử</p>
           <div className="space-y-2">
             {[
-              ['1', 'Export → tải file Excel về'],
-              ['2', 'Mở sheet "Template - Body" hoặc "Template - Sleep"'],
+              ['1', 'Tải fitness-import-templates.xlsx ở mục ②'],
+              ['2', 'Mở sheet tương ứng (Body/Sleep/Running/Nutrition)'],
               ['3', 'Điền dữ liệu theo format (ngày dạng YYYY-MM-DD)'],
-              ['4', 'Lưu file → quay lại app → Import'],
+              ['4', 'Lưu file → quay lại app → Import ở mục ③'],
               ['5', 'App tự kiểm tra và báo lỗi nếu có'],
             ].map(([n, text]) => (
               <div key={n} className="flex gap-3 items-start">
