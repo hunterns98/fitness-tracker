@@ -1,29 +1,53 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type Exercise = { id: string; name: string; muscle_group: string; current_weight_kg: number | null; target_reps: string | null; target_sets: number | null; technique_cue: string | null }
-const GROUPS = ['Ngực', 'Lưng', 'Vai', 'Vai sau', 'Tay trước', 'Tay sau', 'Cẳng tay', 'Chân', 'Core']
+type Exercise = {
+  id: string
+  name: string
+  muscle_group: string
+  current_weight_kg: number | null
+  target_reps: string | null
+  target_sets: number | null
+  technique_cue: string | null
+  difficulty: string | null
+  archived_at: string | null
+}
 
 export default function ExercisesPage() {
   const router = useRouter()
   const [exercises, setExercises] = useState<Exercise[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string | null>(null)
-  const [editing, setEditing] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<Partial<Exercise>>({})
-  const [saving, setSaving] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
-  useEffect(() => { fetch('/api/exercises').then(r => r.json()).then(setExercises) }, [])
+  useEffect(() => {
+    setLoading(true)
+    const status = showArchived ? 'all' : 'active'
+    fetch(`/api/exercises?status=${status}`)
+      .then(r => r.json())
+      .then((data: Exercise[]) => { setExercises(Array.isArray(data) ? data : []); setLoading(false) })
+  }, [showArchived])
 
-  async function saveEdit(id: string) {
-    setSaving(true)
-    const res = await fetch(`/api/exercises/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editValues) })
-    const updated = await res.json()
-    setExercises(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e))
-    setEditing(null); setSaving(false)
-  }
+  // Filter chip derive trực tiếp từ dữ liệu DB, không hardcode
+  const groups = useMemo(() => {
+    const set = new Set(exercises.map(e => e.muscle_group).filter(Boolean))
+    return Array.from(set).sort()
+  }, [exercises])
 
-  const displayed = filter ? exercises.filter(e => e.muscle_group === filter) : exercises
+  const displayed = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return exercises.filter(e => {
+      if (filter && e.muscle_group !== filter) return false
+      if (!q) return true
+      return (
+        e.name.toLowerCase().includes(q) ||
+        e.muscle_group.toLowerCase().includes(q) ||
+        (e.technique_cue ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [exercises, search, filter])
 
   return (
     <div className="min-h-screen pb-20" style={{ background: 'var(--bg)' }}>
@@ -32,7 +56,15 @@ export default function ExercisesPage() {
         <h1 className="font-bold" style={{ color: 'var(--text)' }}>Bài tập</h1>
       </div>
 
-      <div className="px-4 pt-4 space-y-4">
+      <div className="px-4 pt-4 space-y-3">
+        {/* Search */}
+        <input
+          className="input"
+          placeholder="Tìm theo tên, nhóm cơ, kỹ thuật..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+
         {/* Filter chips */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button onClick={() => setFilter(null)}
@@ -40,7 +72,7 @@ export default function ExercisesPage() {
             style={{ background: filter === null ? 'var(--brand)' : 'var(--surface)', color: filter === null ? 'white' : 'var(--text-2)', border: '1px solid var(--border)' }}>
             Tất cả
           </button>
-          {GROUPS.map(g => (
+          {groups.map(g => (
             <button key={g} onClick={() => setFilter(f => f === g ? null : g)}
               className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{ background: filter === g ? 'var(--brand)' : 'var(--surface)', color: filter === g ? 'white' : 'var(--text-2)', border: '1px solid var(--border)' }}>
@@ -49,65 +81,51 @@ export default function ExercisesPage() {
           ))}
         </div>
 
-        {/* Exercise list */}
+        {/* Toggle archived */}
+        <button onClick={() => setShowArchived(s => !s)}
+          className="flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-xl"
+          style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+          <span>{showArchived ? '☑' : '☐'}</span>
+          Hiện đã lưu trữ
+        </button>
+
+        {/* List */}
+        {loading && <p className="text-center py-8 text-sm" style={{ color: 'var(--text-3)' }}>Đang tải...</p>}
+
+        {!loading && displayed.length === 0 && (
+          <div className="card p-8 text-center">
+            <p className="text-sm" style={{ color: 'var(--text-3)' }}>Không tìm thấy bài tập nào.</p>
+          </div>
+        )}
+
         <div className="space-y-2">
           {displayed.map(ex => {
-            const isEditing = editing === ex.id
+            const isArchived = !!ex.archived_at
             return (
-              <div key={ex.id} className="card p-4 space-y-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{ex.name}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{ex.muscle_group}</p>
+              <button key={ex.id}
+                onClick={() => router.push(`/exercises/${ex.id}`)}
+                className="card w-full p-4 flex items-center justify-between text-left transition-all"
+                style={{ opacity: isArchived ? 0.5 : 1 }}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-sm truncate" style={{ color: 'var(--text)' }}>{ex.name}</p>
+                    {isArchived && (
+                      <span className="text-xs px-2 py-0.5 rounded-full shrink-0" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>
+                        Đã lưu trữ
+                      </span>
+                    )}
                   </div>
-                  <button onClick={() => { if (isEditing) setEditing(null); else { setEditing(ex.id); setEditValues({ current_weight_kg: ex.current_weight_kg, target_reps: ex.target_reps, target_sets: ex.target_sets, technique_cue: ex.technique_cue }) } }}
-                    className="text-xs px-2.5 py-1 rounded-lg" style={{ background: 'var(--brand-light)', color: 'var(--brand-dark)' }}>
-                    {isEditing ? 'Huỷ' : 'Sửa'}
-                  </button>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{ex.muscle_group}</p>
                 </div>
-
-                {!isEditing && (
-                  <>
-                    <div className="flex gap-3 text-xs" style={{ color: 'var(--text-3)' }}>
-                      <span>Tạ: <strong style={{ color: 'var(--text)' }}>{ex.current_weight_kg ?? '—'} kg</strong></span>
-                      <span>Reps: <strong style={{ color: 'var(--text)' }}>{ex.target_reps ?? '—'}</strong></span>
-                      <span>Sets: <strong style={{ color: 'var(--text)' }}>{ex.target_sets ?? '—'}</strong></span>
-                    </div>
-                    {ex.technique_cue && <p className="text-xs leading-relaxed" style={{ color: 'var(--brand-dark)' }}>{ex.technique_cue}</p>}
-                  </>
-                )}
-
-                {isEditing && (
-                  <div className="space-y-3 pt-1">
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Tạ (kg)</p>
-                        <input type="number" step="0.5" value={editValues.current_weight_kg ?? ''} className="input"
-                          onChange={e => setEditValues(v => ({ ...v, current_weight_kg: parseFloat(e.target.value) }))} />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Rep mục tiêu</p>
-                        <input type="text" value={editValues.target_reps ?? ''} placeholder="vd: 8-12" className="input"
-                          onChange={e => setEditValues(v => ({ ...v, target_reps: e.target.value }))} />
-                      </div>
-                      <div className="w-16">
-                        <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Sets</p>
-                        <input type="number" value={editValues.target_sets ?? ''} className="input"
-                          onChange={e => setEditValues(v => ({ ...v, target_sets: parseInt(e.target.value) }))} />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>Cue kỹ thuật</p>
-                      <textarea value={editValues.technique_cue ?? ''} rows={2} className="input"
-                        style={{ resize: 'none', height: 'auto' }}
-                        onChange={e => setEditValues(v => ({ ...v, technique_cue: e.target.value }))} />
-                    </div>
-                    <button onClick={() => saveEdit(ex.id)} disabled={saving} className="btn-primary py-2.5 text-sm">
-                      {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
-                    </button>
-                  </div>
-                )}
-              </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {ex.difficulty && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--brand-light)', color: 'var(--brand-dark)' }}>
+                      {ex.difficulty}
+                    </span>
+                  )}
+                  <span style={{ color: 'var(--text-3)' }}>›</span>
+                </div>
+              </button>
             )
           })}
         </div>
