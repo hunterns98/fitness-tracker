@@ -22,15 +22,6 @@ export function formatDate(dateStr: string): string {
   return `${days[d.getDay()]}, ${d.getDate()}/${d.getMonth() + 1}`
 }
 
-/** So sánh tuần hiện tại vs tuần trước cùng bài */
-export function progressLabel(curr: number, prev: number | null): string {
-  if (prev === null) return 'Lần đầu'
-  const diff = curr - prev
-  if (diff > 0) return `+${diff}`
-  if (diff < 0) return `${diff}`
-  return '='
-}
-
 /** Check điều kiện tăng tạ:
  *  - Set cuối đạt rep mục tiêu tối đa
  *  - RPE trung bình ≤ 8
