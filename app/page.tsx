@@ -97,14 +97,19 @@ export default function HomePage() {
               {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 overflow-x-auto shrink-0" style={{ maxWidth: '60%' }}>
             <button onClick={() => router.push('/dashboard')}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium"
+              className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium"
               style={{ background: 'var(--brand-light)', color: 'var(--brand-dark)' }}>
               📊 Dashboard
             </button>
+            <button onClick={() => router.push('/exercises')}
+              className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium"
+              style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+              📚 Bài tập
+            </button>
             <button onClick={() => router.push('/log')}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium"
+              className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium"
               style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
               + Ghi chép
             </button>
