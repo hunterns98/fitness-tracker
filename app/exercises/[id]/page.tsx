@@ -90,7 +90,7 @@ export default function ExerciseDetailPage() {
   return (
     <div className="min-h-screen pb-20" style={{ background: 'var(--bg)' }}>
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }} className="px-4 py-4 flex items-center gap-3">
-        <button onClick={() => router.push('/exercises')} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>←</button>
+        <button onClick={() => router.push('/exercises')} className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium" style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>← Bài tập</button>
         <div className="flex-1 min-w-0">
           <p className="font-bold truncate" style={{ color: 'var(--text)' }}>{ex.name}</p>
           <p className="text-xs" style={{ color: 'var(--text-3)' }}>{ex.muscle_group}</p>
