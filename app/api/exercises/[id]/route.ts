@@ -9,6 +9,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params
   const body = await req.json()
 
+  // Guard: chỉ kích hoạt khi request đang ARCHIVE (archived_at: null -> có giá trị).
+  // Unarchive (archived_at: null) và các PATCH khác (Edit form không gửi field này) không bị ảnh hưởng.
+  if (Object.prototype.hasOwnProperty.call(body, 'archived_at') && body.archived_at) {
+    const { data: usedInTemplate } = await supabase
+      .from('template_exercises')
+      .select('id')
+      .eq('exercise_id', id)
+      .limit(1)
+
+    if (usedInTemplate && usedInTemplate.length > 0) {
+      return NextResponse.json({ error: 'Exercise is used by template' }, { status: 409 })
+    }
+  }
+
   const { data, error } = await supabase
     .from('exercises')
     .update(body)
