@@ -98,3 +98,109 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(fallbackResult)
 }
+
+// POST /api/session-exercises
+// Body: { session_id, exercise_id }
+//
+// Thêm 1 bài tập vào session đang tồn tại (dùng bởi Exercise Picker trong Workout Editor).
+// Guard theo Architecture Review đã duyệt:
+//   1. Exercise đã archived        -> 409 "Exercise is archived"
+//   2. Exercise đã có trong session -> 409 "Exercise already in this session"
+//   3. display_order = MAX hiện tại trong session + 1 (1-based, khớp convention template_exercises)
+//   4. Snapshot target_sets/target_reps từ exercises tại thời điểm thêm (ADR-004)
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  const { session_id, exercise_id } = body
+
+  if (!session_id || !exercise_id) {
+    return NextResponse.json({ error: 'session_id and exercise_id are required' }, { status: 400 })
+  }
+
+  // 1. Check exercise tồn tại + archived
+  const { data: exercise, error: exError } = await supabase
+    .from('exercises')
+    .select('id, target_sets, target_reps, archived_at')
+    .eq('id', exercise_id)
+    .single()
+
+  if (exError || !exercise) {
+    return NextResponse.json({ error: 'Exercise not found' }, { status: 404 })
+  }
+
+  if (exercise.archived_at) {
+    return NextResponse.json({ error: 'Exercise is archived' }, { status: 409 })
+  }
+
+  // 2. Check duplicate trong session
+  const { data: existing } = await supabase
+    .from('session_exercises')
+    .select('id')
+    .eq('session_id', session_id)
+    .eq('exercise_id', exercise_id)
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json({ error: 'Exercise already in this session' }, { status: 409 })
+  }
+
+  // 3. Tính display_order tiếp theo — 1-based, khớp convention template_exercises hiện có
+  const { data: maxRow } = await supabase
+    .from('session_exercises')
+    .select('display_order')
+    .eq('session_id', session_id)
+    .order('display_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const nextOrder = maxRow ? maxRow.display_order + 1 : 1
+
+  // 4. Insert với snapshot target_sets/target_reps tại thời điểm này (ADR-004)
+  const { data: inserted, error: insertError } = await supabase
+    .from('session_exercises')
+    .insert({
+      session_id,
+      exercise_id,
+      display_order: nextOrder,
+      target_sets: exercise.target_sets,
+      target_reps: exercise.target_reps,
+      notes: null,
+      created_from_template_id: null, // thêm thủ công qua Picker, không phải từ template
+    })
+    .select(`
+      id,
+      exercise_id,
+      display_order,
+      target_sets,
+      target_reps,
+      notes,
+      created_from_template_id,
+      exercise:exercises(
+        id,
+        name,
+        muscle_group,
+        current_weight_kg,
+        technique_cue
+      )
+    `)
+    .single()
+
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 })
+  }
+
+  const ex = inserted.exercise as any
+  const result = {
+    id: inserted.exercise_id,
+    session_exercise_id: inserted.id,
+    name: ex?.name ?? 'Bài tập không xác định',
+    muscle_group: ex?.muscle_group ?? null,
+    current_weight_kg: ex?.current_weight_kg ?? null,
+    technique_cue: ex?.technique_cue ?? null,
+    target_sets: inserted.target_sets,
+    target_reps: inserted.target_reps,
+    notes: inserted.notes,
+    _source: 'session_exercises',
+  }
+
+  return NextResponse.json(result, { status: 201 })
+}
