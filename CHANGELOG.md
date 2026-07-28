@@ -3,6 +3,25 @@
 All notable changes to Fitness Tracker are documented here.
 Format: [Version] — Release Name — Date
 
+[Unreleased — Sprint 3 Phase 3] — Exercise Picker + Workout Editor
+Added
+`components/ExercisePicker.tsx` (mới): component UI chọn bài tập, search + filter hoàn toàn client-side (`allowArchived`, `allowSearch`, `allowFilter`, `onSelect`). Không chứa business logic.
+Workout Editor (nhúng trong `app/workout/[sessionId]/page.tsx`): thêm/xóa/đổi thứ tự bài tập ngay trong buổi đang tập, qua bottom sheet, không cần route riêng.
+Entry point: icon ✏️ cạnh chỉ số "X/Y" trong card bài tập
+Reorder bằng nút ↑ ↓ (không drag-and-drop), dùng `PATCH /api/session-exercises/:id/move`
+Thêm bài dùng `POST /api/session-exercises` (server tự tính display_order + snapshot target_sets/target_reps theo ADR-004)
+Remove dùng `DELETE /api/session-exercises/:id`, có confirm: "Xóa {tên} khỏi buổi tập này? Các set đã ghi sẽ vẫn được giữ lại."
+Session kháng lực rỗng: `app/day/[date]/page.tsx` có nút "Bắt đầu trống, tự chọn bài tập →" — tạo session `strength` không kèm `template_id`. Workout page hiển thị empty state khi 0 bài.
+Behavior note (phát hiện khi đối chiếu API thật, không phải bug)
+`DELETE /api/session-exercises/:id` chặn xóa (409) nếu bài tập đã có `workout_sets` được log trong session. Khi gặp trường hợp này, Workout Editor hiện `alert()` giải thích thay vì xóa. Đây là guard đã có sẵn trong API (bảo toàn lịch sử tập luyện), không phải thay đổi mới.
+Session dùng `template_fallback` (session cũ trước Sprint 2, chưa có `session_exercises` thật) không hiện nút ✏️ Sửa bài tập — quyết định giữ tương thích ngược theo ADR-001.
+Không đổi
+Schema DB (`exercises`, `session_exercises`)
+Archive Guard (vẫn chỉ chặn theo `template_exercises`)
+Backlog (không nằm trong sprint này)
+Undo trong vài giây sau khi xóa bài khỏi session
+Status
+✅ Implementation đã đối chiếu với code thật của 3 API `session-exercises` + field `archived_at`. Chờ Manual Test trước khi đổi trạng thái sang PASS.
 ---
 
 ## [v0.1.0] — Sprint 1 Stable — 2026-07-09
