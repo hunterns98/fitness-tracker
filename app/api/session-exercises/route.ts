@@ -12,7 +12,10 @@ export const dynamic = 'force-dynamic'
 // Fallback (ADR-001 backward compat):
 //   1. session_exercises tồn tại → new path (snapshot + JOIN)
 //   2. session_exercises rỗng → fallback: template_exercises + JOIN exercises (session cũ)
-
+//
+// has_logged_sets (bổ sung — additive, không đổi shape cũ):
+//   Cho biết bài này đã có workout_sets log trong session chưa, để client disable nút xóa
+//   ngay từ đầu thay vì phải confirm rồi mới nhận lỗi 409 từ DELETE.
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const sessionId = searchParams.get('session_id')
@@ -48,6 +51,13 @@ export async function GET(req: NextRequest) {
   }
 
   if (sessionExercises && sessionExercises.length > 0) {
+    // ── MỚI: lấy danh sách exercise_id đã có set log trong session này ──
+    const { data: loggedSets } = await supabase
+      .from('workout_sets')
+      .select('exercise_id')
+      .eq('session_id', sessionId)
+    const loggedExerciseIds = new Set((loggedSets ?? []).map(r => r.exercise_id))
+
     // New path: dùng session_exercises với metadata từ exercises table
     const result = sessionExercises.map(se => {
       const ex = se.exercise as any
@@ -63,6 +73,7 @@ export async function GET(req: NextRequest) {
         target_sets: se.target_sets,
         target_reps: se.target_reps,
         notes: se.notes,
+        has_logged_sets: loggedExerciseIds.has(se.exercise_id), // ← MỚI (additive)
         _source: 'session_exercises',
       }
     })
@@ -93,6 +104,7 @@ export async function GET(req: NextRequest) {
 
   const fallbackResult = (templateExercises ?? []).map(te => ({
     ...(te.exercise as any),
+    has_logged_sets: false, // fallback session không dùng field này (Editor bị ẩn), giữ shape nhất quán
     _source: 'template_fallback',
   }))
 
@@ -126,7 +138,6 @@ export async function POST(req: NextRequest) {
   if (exError || !exercise) {
     return NextResponse.json({ error: 'Exercise not found' }, { status: 404 })
   }
-
   if (exercise.archived_at) {
     return NextResponse.json({ error: 'Exercise is archived' }, { status: 409 })
   }
@@ -199,6 +210,7 @@ export async function POST(req: NextRequest) {
     target_sets: inserted.target_sets,
     target_reps: inserted.target_reps,
     notes: inserted.notes,
+    has_logged_sets: false, // vừa mới thêm, chắc chắn chưa có set nào
     _source: 'session_exercises',
   }
 
