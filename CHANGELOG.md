@@ -21,7 +21,17 @@ Archive Guard (vẫn chỉ chặn theo `template_exercises`)
 Backlog (không nằm trong sprint này)
 Undo trong vài giây sau khi xóa bài khỏi session
 Status
-✅ Implementation đã đối chiếu với code thật của 3 API `session-exercises` + field `archived_at`. Chờ Manual Test trước khi đổi trạng thái sang PASS.
+⚠️ PARTIAL PASS — Manual Test hoàn tất (xem docs/SPRINT_3_PHASE_3_REPORT.md).
+Backend / Data Integrity: 7/7 PASS.
+Frontend UX: 10/11 PASS, 1 Partial Pass, 1 Not Tested.
+
+Known Limitation
+Nút xóa (🗑) chưa disable đúng khi bài đã có logged sets — nút vẫn đỏ và bấm được,
+nhưng server vẫn chặn đúng bằng HTTP 409, dữ liệu không bị mất. Nguyên nhân chưa xác
+định dứt khoát (nghi cache/deploy hoặc field has_logged_sets tính sai ở server — cần
+điều tra thêm). Không ảnh hưởng toàn vẹn dữ liệu. Sẽ xử lý ở patch kế tiếp.
+```
+Không cần sửa gì khác trong khối này — phần Added / Behavior note / Không đổi / Backlog giữ nguyên.
 ---
 
 ## [v0.1.0] — Sprint 1 Stable — 2026-07-09
