@@ -132,6 +132,33 @@ export default function DayPage() {
     }
   }
 
+  // Bắt đầu buổi kháng lực trống — không chọn template, không snapshot exercise nào.
+  // Workout Editor (đã build ở app/workout/[sessionId]/page.tsx) cho phép build từ đầu.
+  // Quyết định UX Design đã duyệt: session strength được phép có 0 exercise.
+  async function createBlankStrengthSession() {
+    setCreating(true)
+    setCreateError('')
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, type: 'strength', name_override: 'Buổi tập tự chọn' }),
+      })
+      const session = await res.json()
+
+      if (!res.ok || !session.id || typeof session.id !== 'string') {
+        setCreateError(session.error ?? 'Không tạo được buổi tập. Thử lại.')
+        setCreating(false)
+        return
+      }
+
+      router.push(`/workout/${session.id}`)
+    } catch {
+      setCreateError('Lỗi kết nối. Thử lại.')
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
       {/* Header */}
@@ -248,6 +275,11 @@ export default function DayPage() {
                 <button onClick={createSession} disabled={!selectedTemplate || creating}
                   className="btn-primary">
                   {creating ? 'Đang tạo...' : 'Bắt đầu tập →'}
+                </button>
+                {/* Bắt đầu trống — session strength 0 bài, build bằng Workout Editor (UX Design đã duyệt) */}
+                <button onClick={createBlankStrengthSession} disabled={creating}
+                  className="btn-ghost w-full text-center">
+                  {creating ? 'Đang tạo...' : 'Hoặc bắt đầu trống, tự chọn bài tập →'}
                 </button>
               </>
             )}
