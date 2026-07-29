@@ -2,7 +2,16 @@
 
 All notable changes to Fitness Tracker are documented here.
 Format: [Version] — Release Name — Date
+## [Unreleased] — Sprint 4: Workout Import/Export (In Progress)
 
+### Step 1/N — Export: session_ref, sheet "Session Exercises", exercise_id (ADR-008)
+- `app/api/export/route.ts`: thêm query `session_exercises`; sinh `session_ref` (số thứ tự,
+  chỉ cho session type='strength') để làm khóa nối giữa các sheet lúc import.
+- Sheet "Workout Sessions": thêm cột `Session Ref` (trống với type=run/other).
+- Sheet mới "Session Exercises": target_sets/target_reps/display_order/notes theo session_ref.
+- Sheet "Workout Sets": đổi `Session ID` (UUID) → `Session Ref` (số); thêm cột `Exercise ID`.
+- **Import: CHƯA có gì thay đổi** — 3 sheet trên chưa được nhận diện bởi `SHEET_MAP`,
+  import file sẽ tự động bỏ qua chúng (hành vi đã có sẵn, không phải bug).
 [Unreleased — Sprint 3 Phase 3] — Exercise Picker + Workout Editor
 Added
 `components/ExercisePicker.tsx` (mới): component UI chọn bài tập, search + filter hoàn toàn client-side (`allowArchived`, `allowSearch`, `allowFilter`, `onSelect`). Không chứa business logic.
