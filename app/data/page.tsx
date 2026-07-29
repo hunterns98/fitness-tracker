@@ -13,7 +13,7 @@ type ImportResult = { imported: number; skipped?: number; errors: ValidationErro
 // artifact that closes the "re-import produces 3 errors on row 2"
 // bug, since Template placeholder rows can no longer be present in
 // the same workbook as real data.
-async function exportDataToExcel() {
+async function exportToExcel() {
   const res = await fetch('/api/export')
   const data = await res.json()
 
@@ -46,7 +46,7 @@ async function exportDataToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sleepRows.length ? sleepRows : [{ 'Ngày (YYYY-MM-DD)': '' }]), 'Sleep & Recovery')
 
- // Sheet 3: Workout Sessions
+  // Sheet 3: Workout Sessions
   const sessionRows = data.workout_sessions.map((r: any) => ({
     'Session Ref': r.session_ref ?? '',
     'Ngày': r.date,
@@ -62,7 +62,7 @@ async function exportDataToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows.length ? sessionRows : [{ 'Session Ref': '' }]), 'Workout Sessions')
 
-  // Sheet 4: Session Exercises (ADR-008 D3 — target snapshot, nối bằng session_ref)
+  // Sheet 4: Session Exercises (ADR-008 D3)
   const sessionExRows = data.session_exercises.map((r: any) => ({
     'Session Ref': r.session_ref,
     'Exercise ID': r.exercise_id,
@@ -75,7 +75,7 @@ async function exportDataToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionExRows.length ? sessionExRows : [{ 'Session Ref': '' }]), 'Session Exercises')
 
-  // Sheet 5: Workout Sets (ADR-008 D1/D3 — exercise_id làm identity, session_ref thay session_id)
+  // Sheet 5: Workout Sets (ADR-008 D1/D3)
   const setRows = data.workout_sets.map((r: any) => ({
     'Session Ref': r.session_ref,
     'Exercise ID': r.exercise_id,
@@ -89,27 +89,18 @@ async function exportDataToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(setRows.length ? setRows : [{ 'Session Ref': '' }]), 'Workout Sets')
 
-// ── Export: Import Templates (fitness-import-templates.xlsx) ───
-// Task 6: split from the old exportToExcel(). Contains ONLY the 4
-// template sheets, one workbook, sheet names UNCHANGED (Template -
-// Body / Sleep / Running / Nutrition) so SHEET_MAP below needs no
-// changes. Template - Nutrition is new (previously missing entirely).
-async function exportImportTemplates() {
-  const wb = XLSX.utils.book_new()
-
+  // Sheet 6: Template for import
   const templateBody = [{ 'date': 'YYYY-MM-DD', 'weight_kg': 62.5, 'body_fat_pct': 17.2, 'lean_mass_kg': 51.7, 'waist_cm': 79, 'note': 'Ghi chú tuỳ chọn' }]
   const templateSleep = [{ 'date': 'YYYY-MM-DD', 'resting_hr': 60, 'sleep_score': 85, 'sleep_duration_min': 450, 'wake_count': 1, 'energy_level': 'Tốt', 'note': '' }]
   const templateRun = [{ 'date': 'YYYY-MM-DD', 'name': 'Easy Run', 'duration_minutes': 50, 'distance_km': 7.0, 'avg_pace_mmss': '8:30', 'avg_hr': 140, 'max_hr': 165, 'calories': 450, 'feeling_note': '' }]
-  // New: Template - Nutrition, matching validateNutrition() field set exactly,
-  // including water_adequate (per revised Task 6 scope).
-  const templateNutrition = [{ 'date': 'YYYY-MM-DD', 'calories': 1950, 'protein_g': 155, 'carbs_g': 175, 'fat_g': 65, 'fiber_g': 10, 'water_adequate': true, 'note': '' }]
 
+  const ws5 = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateBody), 'Template - Body')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateSleep), 'Template - Sleep')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateRun), 'Template - Running')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateNutrition), 'Template - Nutrition')
 
-  XLSX.writeFile(wb, 'fitness-import-templates.xlsx')
+  const today = new Date().toISOString().split('T')[0]
+  XLSX.writeFile(wb, `fitness-tracker-${today}.xlsx`)
 }
 
 // ── Import ─────────────────────────────────────────────────────
