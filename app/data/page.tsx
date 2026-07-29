@@ -46,8 +46,9 @@ async function exportDataToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sleepRows.length ? sleepRows : [{ 'Ngày (YYYY-MM-DD)': '' }]), 'Sleep & Recovery')
 
-  // Sheet 3: Workout Sessions
+ // Sheet 3: Workout Sessions
   const sessionRows = data.workout_sessions.map((r: any) => ({
+    'Session Ref': r.session_ref ?? '',
     'Ngày': r.date,
     'Loại': r.type,
     'Tên buổi': r.name,
@@ -59,11 +60,25 @@ async function exportDataToExcel() {
     'Calories': r.calories,
     'Cảm giác': r.feeling_note,
   }))
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows.length ? sessionRows : [{ 'Ngày': '' }]), 'Workout Sessions')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows.length ? sessionRows : [{ 'Session Ref': '' }]), 'Workout Sessions')
 
-  // Sheet 4: Workout Sets
+  // Sheet 4: Session Exercises (ADR-008 D3 — target snapshot, nối bằng session_ref)
+  const sessionExRows = data.session_exercises.map((r: any) => ({
+    'Session Ref': r.session_ref,
+    'Exercise ID': r.exercise_id,
+    'Bài tập': r.exercise_name,
+    'Nhóm cơ': r.muscle_group,
+    'Thứ tự': r.display_order,
+    'Target Sets': r.target_sets,
+    'Target Reps': r.target_reps,
+    'Ghi chú': r.notes,
+  }))
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionExRows.length ? sessionExRows : [{ 'Session Ref': '' }]), 'Session Exercises')
+
+  // Sheet 5: Workout Sets (ADR-008 D1/D3 — exercise_id làm identity, session_ref thay session_id)
   const setRows = data.workout_sets.map((r: any) => ({
-    'Session ID': r.session_id,
+    'Session Ref': r.session_ref,
+    'Exercise ID': r.exercise_id,
     'Bài tập': r.exercise,
     'Nhóm cơ': r.muscle_group,
     'Set': r.set_number,
@@ -72,10 +87,7 @@ async function exportDataToExcel() {
     'RPE': r.rpe,
     'Ghi chú': r.note,
   }))
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(setRows.length ? setRows : [{ 'Session ID': '' }]), 'Workout Sets')
-
-  XLSX.writeFile(wb, 'fitness-data.xlsx')
-}
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(setRows.length ? setRows : [{ 'Session Ref': '' }]), 'Workout Sets')
 
 // ── Export: Import Templates (fitness-import-templates.xlsx) ───
 // Task 6: split from the old exportToExcel(). Contains ONLY the 4
