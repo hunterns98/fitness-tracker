@@ -13,7 +13,9 @@ type ImportResult = { imported: number; skipped?: number; errors: ValidationErro
 // artifact that closes the "re-import produces 3 errors on row 2"
 // bug, since Template placeholder rows can no longer be present in
 // the same workbook as real data.
-async function exportToExcel() {
+// ── Export: Data (fitness-data.xlsx) ────────────────────────────
+// Chứa CHỈ dữ liệu thật — không có sheet Template (Task 6).
+async function exportDataToExcel() {
   const res = await fetch('/api/export')
   const data = await res.json()
 
@@ -89,20 +91,25 @@ async function exportToExcel() {
   }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(setRows.length ? setRows : [{ 'Session Ref': '' }]), 'Workout Sets')
 
-  // Sheet 6: Template for import
+  XLSX.writeFile(wb, 'fitness-data.xlsx')
+}
+
+// ── Export: Import Templates (fitness-import-templates.xlsx) ────
+// Sheet mẫu để điền tay rồi import ngược lại. Không gọi API — dữ
+// liệu tĩnh, không phụ thuộc dữ liệu thật hiện có.
+async function exportImportTemplates() {
+  const wb = XLSX.utils.book_new()
+
   const templateBody = [{ 'date': 'YYYY-MM-DD', 'weight_kg': 62.5, 'body_fat_pct': 17.2, 'lean_mass_kg': 51.7, 'waist_cm': 79, 'note': 'Ghi chú tuỳ chọn' }]
   const templateSleep = [{ 'date': 'YYYY-MM-DD', 'resting_hr': 60, 'sleep_score': 85, 'sleep_duration_min': 450, 'wake_count': 1, 'energy_level': 'Tốt', 'note': '' }]
   const templateRun = [{ 'date': 'YYYY-MM-DD', 'name': 'Easy Run', 'duration_minutes': 50, 'distance_km': 7.0, 'avg_pace_mmss': '8:30', 'avg_hr': 140, 'max_hr': 165, 'calories': 450, 'feeling_note': '' }]
 
-  const ws5 = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateBody), 'Template - Body')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateSleep), 'Template - Sleep')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateRun), 'Template - Running')
 
-  const today = new Date().toISOString().split('T')[0]
-  XLSX.writeFile(wb, `fitness-tracker-${today}.xlsx`)
+  XLSX.writeFile(wb, 'fitness-import-templates.xlsx')
 }
-
 // ── Import ─────────────────────────────────────────────────────
 // UNCHANGED from Task 4/5 — SHEET_MAP, fieldMap, normalization logic
 // all identical. Splitting export into two files does not require
