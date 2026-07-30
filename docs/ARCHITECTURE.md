@@ -71,7 +71,29 @@ Session
 Session Exercises
 
 không đọc trực tiếp Template.
+### D3b — Legacy Session Compatibility (bổ sung 2026-07-28, sau fact-check runtime)
 
+**Fact đã xác nhận bằng số liệu (không phải suy đoán):** 5/14 session type=strength
+hiện có (36%, tạo trước Sprint 3 Phase 2.5) có `session_exercises = 0` dòng thật
+trong DB — chúng hoạt động qua fallback `template_exercises` (ADR-001) khi hiển
+thị trong app, nhưng KHÔNG có snapshot để export.
+
+**Quyết định:** Lúc export, với mỗi session type=strength không có
+`session_exercises` thật nhưng có `template_id`:
+derive dữ liệu tương đương từ `template_exercises JOIN exercises`
+(target_sets/target_reps lấy từ `exercises` hiện tại — cùng cách
+`GET /api/session-exercises` Path 2 đã làm cho fallback hiển thị).
+
+**Import: không đổi.** Vì import (D2) luôn tạo session mới với
+`session_exercises` insert thật từ sheet "Session Exercises" — session
+phục hồi từ file export sẽ tự nhiên có snapshot thật ngay khi tạo,
+không cần migration hay xử lý đặc biệt gì thêm.
+
+**Giới hạn còn lại (chấp nhận được):** Nếu session cũ không có cả
+`session_exercises` lẫn `template_id` (session rỗng thật, hoặc trường
+hợp dữ liệu bất thường khác), sheet "Session Exercises" sẽ không có
+dòng nào cho session đó — đúng theo Q3 orphan rule đã chốt (session
+đó sẽ bị skip khi import lại nếu có set nhưng không có exercise nào).
 =========================================
 ADR-004
 Partial Snapshot
