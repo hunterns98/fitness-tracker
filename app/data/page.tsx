@@ -4,15 +4,167 @@ import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { stripDiacritics } from '@/lib/text'
 
-type ValidationError = { sheet: string; row: number; field: string; message: string }
+type ValidationError = { sheet: string; row?: number; field: string; message: string; sessionRef?: number }
 type ImportResult = { imported: number; skipped?: number; errors: ValidationError[]; message?: string }
 
-// ── Export: Data (fitness-data.xlsx) ────────────────────────────
-// Task 6 (Sprint 3 Phase 0.4): split from the old exportToExcel().
-// Contains ONLY real data sheets — no Template sheets. This is the
-// artifact that closes the "re-import produces 3 errors on row 2"
-// bug, since Template placeholder rows can no longer be present in
-// the same workbook as real data.
+// ── Field normalization dùng chung cho Import (Body/Sleep/Running/Nutrition + ADR-008 Workout) ──
+const IMPORT_FIELD_MAP: Record<string, string> = {
+  ngay_yyyy_mm_dd: 'date',
+  ngay: 'date',
+  can_nang: 'weight_kg',
+  body_fat: 'body_fat_pct',
+  lean_mass: 'lean_mass_kg',
+  vong_eo: 'waist_cm',
+  vong_hong: 'hip_cm',
+  vong_bap_tay: 'arm_cm',
+  vong_dui: 'thigh_cm',
+  resting_hr: 'resting_hr',
+  diem_ngu: 'sleep_score',
+  thoi_gian_ngu: 'sleep_duration_min',
+  so_lan_thuc: 'wake_count',
+  nang_luong: 'energy_level',
+  ten_buoi: 'name',
+  loai: 'type',
+  thoi_gian: 'duration_minutes',
+  quang_duong: 'distance_km',
+  pace: 'avg_pace_mmss',
+  hr_tb: 'avg_hr',
+  hr_max: 'max_hr',
+  cam_giac: 'feeling_note',
+  ghi_chu: 'note',
+  protein: 'protein_g',
+  carbs: 'carbs_g',
+  chat_beo: 'fat_g',
+  chat_xo: 'fiber_g',
+  nuoc: 'water_adequate',
+  est_calo_in: 'calories',
+  // ADR-008 — bổ sung cho 3 sheet Workout (Bước 2)
+  thu_tu: 'display_order',
+  set: 'set_number',
+  ta: 'weight_kg',
+}
+
+function normalizeRow(r: any): Record<string, any> {
+  const out: Record<string, any> = {}
+  for (const [k, v] of Object.entries(r)) {
+    const key = stripDiacritics(k).split('(')[0].trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+    out[IMPORT_FIELD_MAP[key] ?? key] = v
+  }
+  return out
+}
+
+function isValidDateStr(d: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d))
+}
+
+// ── ADR-008 — Validation logic cho Workout Import (Bước 2) ──
+// Gộp 3 sheet theo session_ref, kiểm tra referential integrity.
+// Hàm THUẦN (không đọc file, không gọi API) — được gọi bởi validateWorkoutImport().
+function validateWorkoutSheets(
+  sessionRows: Record<string, any>[],
+  sessionExRows: Record<string, any>[],
+  setRows: Record<string, any>[]
+): ValidationError[] {
+  const errors: ValidationError[] = []
+
+  const sessionMetaByRef = new Map<number, Record<string, any>>()
+  sessionRows.forEach((r, i) => {
+    const ref = parseInt(r.session_ref, 10)
+    if (!ref || isNaN(ref)) return // dòng run/other, không thuộc Workout Import
+    if (sessionMetaByRef.has(ref)) {
+      errors.push({ sheet: 'Workout Sessions', row: i + 2, field: 'session_ref', message: `Session Ref ${ref} bị lặp lại trong sheet Workout Sessions`, sessionRef: ref })
+      return
+    }
+    sessionMetaByRef.set(ref, r)
+  })
+
+  const exercisesByRef = new Map<number, Record<string, any>[]>()
+  sessionExRows.forEach((r, i) => {
+    const ref = parseInt(r.session_ref, 10)
+    if (!ref || isNaN(ref)) {
+      errors.push({ sheet: 'Session Exercises', row: i + 2, field: 'session_ref', message: 'Thiếu hoặc sai Session Ref' })
+      return
+    }
+    if (!exercisesByRef.has(ref)) exercisesByRef.set(ref, [])
+    exercisesByRef.get(ref)!.push(r)
+  })
+
+  const setsByRef = new Map<number, Record<string, any>[]>()
+  setRows.forEach((r, i) => {
+    const ref = parseInt(r.session_ref, 10)
+    if (!ref || isNaN(ref)) {
+      errors.push({ sheet: 'Workout Sets', row: i + 2, field: 'session_ref', message: 'Thiếu hoặc sai Session Ref' })
+      return
+    }
+    if (!setsByRef.has(ref)) setsByRef.set(ref, [])
+    setsByRef.get(ref)!.push(r)
+  })
+
+  const allRefs = new Set<number>([...sessionMetaByRef.keys(), ...exercisesByRef.keys(), ...setsByRef.keys()])
+
+  for (const ref of allRefs) {
+    const meta = sessionMetaByRef.get(ref)
+    const exs = exercisesByRef.get(ref) ?? []
+    const sets = setsByRef.get(ref) ?? []
+
+    // Orphan (ADR-008 UX — skip toàn bộ session nếu thiếu quan hệ giữa sheet)
+    if (!meta) {
+      errors.push({ sheet: 'Session Exercises / Workout Sets', field: 'session_ref', message: `Session Ref ${ref} không có dòng tương ứng trong sheet Workout Sessions`, sessionRef: ref })
+      continue
+    }
+    if (!meta.date || !isValidDateStr(String(meta.date))) {
+      errors.push({ sheet: 'Workout Sessions', field: 'date', message: `Session Ref ${ref}: ngày không hợp lệ (dùng YYYY-MM-DD)`, sessionRef: ref })
+      continue
+    }
+    if (String(meta.type).trim() !== 'strength') {
+      errors.push({ sheet: 'Workout Sessions', field: 'type', message: `Session Ref ${ref}: chỉ hỗ trợ import buổi kháng lực (type=strength)`, sessionRef: ref })
+      continue
+    }
+
+    // Orphan: exercise_id trong Workout Sets phải khớp exercise_id nào đó
+    // trong Session Exercises của CÙNG session_ref (ADR-008 D1 + orphan rule)
+    const exIds = new Set(exs.map(e => String(e.exercise_id)))
+    const missingEx = sets.filter(s => !exIds.has(String(s.exercise_id)))
+    if (missingEx.length > 0) {
+      errors.push({ sheet: 'Workout Sets', field: 'exercise_id', message: `Session Ref ${ref}: có set không khớp exercise_id nào trong Session Exercises`, sessionRef: ref })
+      continue
+    }
+
+    // TODO (Bước sau, trước khi viết API insert):
+    // - Validate target_sets / target_reps trong Session Exercises (kiểu số hợp lệ,
+    //   target_sets > 0, target_reps đúng định dạng "8-12" hoặc số đơn).
+    // - Validate display_order: số nguyên, không trùng nhau trong cùng session_ref.
+    // - Validate set_number trong Workout Sets: số nguyên dương, không trùng
+    //   (exercise_id, set_number) trong cùng session_ref.
+    // - Validate reps/weight_kg/rpe: kiểu số hợp lệ, rpe trong khoảng 6-10 nếu có.
+    // Chưa làm ở Bước 2 vì Bước 2 chỉ kiểm tra referential integrity giữa các
+    // sheet — validate giá trị từng field sẽ làm ngay trước khi viết logic insert.
+  }
+
+  return errors
+}
+
+// ── ADR-008 — Điều phối đọc + validate Workout (Bước 2) ──
+// Tách khỏi importFromFile(): hàm đó chỉ điều phối luồng chung, không chứa
+// logic đọc/gộp sheet Workout. Trả về null nếu file không có sheet Workout nào
+// (import bình thường, không liên quan ADR-008).
+function validateWorkoutImport(wb: XLSX.WorkBook): ValidationError[] | null {
+  const hasWorkoutSheets = ['Workout Sessions', 'Session Exercises', 'Workout Sets'].some(n => wb.SheetNames.includes(n))
+  if (!hasWorkoutSheets) return null
+
+  const sessionRows = wb.SheetNames.includes('Workout Sessions')
+    ? XLSX.utils.sheet_to_json(wb.Sheets['Workout Sessions']).map(normalizeRow) : []
+  const sessionExRows = wb.SheetNames.includes('Session Exercises')
+    ? XLSX.utils.sheet_to_json(wb.Sheets['Session Exercises']).map(normalizeRow) : []
+  const setRows = wb.SheetNames.includes('Workout Sets')
+    ? XLSX.utils.sheet_to_json(wb.Sheets['Workout Sets']).map(normalizeRow) : []
+
+  return validateWorkoutSheets(sessionRows, sessionExRows, setRows)
+}
+
 // ── Export: Data (fitness-data.xlsx) ────────────────────────────
 // Chứa CHỈ dữ liệu thật — không có sheet Template (Task 6).
 async function exportDataToExcel() {
@@ -110,11 +262,9 @@ async function exportImportTemplates() {
 
   XLSX.writeFile(wb, 'fitness-import-templates.xlsx')
 }
+
 // ── Import ─────────────────────────────────────────────────────
-// UNCHANGED from Task 4/5 — SHEET_MAP, fieldMap, normalization logic
-// all identical. Splitting export into two files does not require
-// any change here.
-async function importFromFile(file: File): Promise<{ results: ImportResult[]; totalImported: number; totalErrors: number }> {
+async function importFromFile(file: File): Promise<{ results: ImportResult[]; totalImported: number; totalErrors: number; workoutValidation: ValidationError[] | null }> {
   const arrayBuffer = await file.arrayBuffer()
   const wb = XLSX.read(arrayBuffer, { type: 'array' })
 
@@ -134,60 +284,18 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
   let totalImported = 0
   let totalErrors = 0
 
+  // ADR-008 — Bước 2: validate Workout tách riêng, không gộp vào `results`
+  // (results chỉ dành cho các sheet đã thực sự có luồng import thật).
+  const workoutValidation = validateWorkoutImport(wb)
+
   for (const sheetName of wb.SheetNames) {
     const apiSheet = SHEET_MAP[sheetName]
-    if (!apiSheet) continue // skip unknown sheets
+    if (!apiSheet) continue // skip unknown sheets (bao gồm 3 sheet Workout — chưa có luồng import thật)
 
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName])
     if (!rows.length) continue
 
-    // Normalize keys: strip Vietnamese diacritics (Task 4), then remove
-    // units from column headers, then map to known field names (Task 5
-    // added Nutrition fields).
-    const normalized = rows.map((r: any) => {
-      const out: Record<string, any> = {}
-      for (const [k, v] of Object.entries(r)) {
-        // Extract field name from "Field name (unit)" pattern
-        const key = stripDiacritics(k).split('(')[0].trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '_')
-          .replace(/^_+|_+$/g, '')
-        // Map Vietnamese headers to field names
-        const fieldMap: Record<string, string> = {
-          ngay_yyyy_mm_dd: 'date',
-          ngay: 'date',
-          can_nang: 'weight_kg',
-          body_fat: 'body_fat_pct',
-          lean_mass: 'lean_mass_kg',
-          vong_eo: 'waist_cm',
-          vong_hong: 'hip_cm',
-          vong_bap_tay: 'arm_cm',
-          vong_dui: 'thigh_cm',
-          resting_hr: 'resting_hr',
-          diem_ngu: 'sleep_score',
-          thoi_gian_ngu: 'sleep_duration_min',
-          so_lan_thuc: 'wake_count',
-          nang_luong: 'energy_level',
-          ten_buoi: 'name',
-          loai: 'type',
-          thoi_gian: 'duration_minutes',
-          quang_duong: 'distance_km',
-          pace: 'avg_pace_mmss',
-          hr_tb: 'avg_hr',
-          hr_max: 'max_hr',
-          cam_giac: 'feeling_note',
-          ghi_chu: 'note',
-          protein: 'protein_g',
-          carbs: 'carbs_g',
-          chat_beo: 'fat_g',
-          chat_xo: 'fiber_g',
-          nuoc: 'water_adequate',
-          est_calo_in: 'calories',
-        }
-        out[fieldMap[key] ?? key] = v
-      }
-      return out
-    })
+    const normalized = rows.map(normalizeRow)
 
     const res = await fetch('/api/import', {
       method: 'POST',
@@ -208,7 +316,7 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
     }
   }
 
-  return { results, totalImported, totalErrors }
+  return { results, totalImported, totalErrors, workoutValidation }
 }
 
 // ── UI ─────────────────────────────────────────────────────────
@@ -219,6 +327,7 @@ export default function DataPage() {
   const [exportingTemplates, setExportingTemplates] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ totalImported: number; totalErrors: number; results: ImportResult[] } | null>(null)
+  const [workoutValidation, setWorkoutValidation] = useState<ValidationError[] | null>(null)
   const [error, setError] = useState('')
 
   async function handleExportData() {
@@ -240,10 +349,12 @@ export default function DataPage() {
     if (!file) return
     setImporting(true)
     setImportResult(null)
+    setWorkoutValidation(null)
     setError('')
     try {
       const result = await importFromFile(file)
       setImportResult(result)
+      setWorkoutValidation(result.workoutValidation)
     } catch (e: any) {
       setError(e.message)
     }
@@ -272,14 +383,12 @@ export default function DataPage() {
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Toàn bộ dữ liệu thật — backup / xem lại (KHÔNG dùng để nhập liệu)</p>
             </div>
           </div>
-
           <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--surface-2)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>Sheet trong file này:</p>
-            {['📋 Body Metrics', '😴 Sleep & Recovery', '🏋️ Workout Sessions', '💪 Workout Sets'].map(item => (
+            {['📋 Body Metrics', '😴 Sleep & Recovery', '🏋️ Workout Sessions', '💪 Session Exercises', '🏋️‍♂️ Workout Sets'].map(item => (
               <p key={item} className="text-xs" style={{ color: 'var(--text-2)' }}>{item}</p>
             ))}
           </div>
-
           <button onClick={handleExportData} disabled={exportingData} className="btn-primary"
             style={{ background: 'var(--success)' }}>
             {exportingData ? 'Đang tạo file...' : '⬇️ Tải fitness-data.xlsx'}
@@ -295,14 +404,12 @@ export default function DataPage() {
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Mẫu để điền dữ liệu mới hoặc lịch sử, rồi import ngược lại</p>
             </div>
           </div>
-
           <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--surface-2)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>Sheet trong file này:</p>
             {['⚖️ Template - Body', '😴 Template - Sleep', '🏃 Template - Running', '🥗 Template - Nutrition'].map(item => (
               <p key={item} className="text-xs" style={{ color: 'var(--text-2)' }}>{item}</p>
             ))}
           </div>
-
           <button onClick={handleExportTemplates} disabled={exportingTemplates} className="btn-primary">
             {exportingTemplates ? 'Đang tạo file...' : '📝 Tải fitness-import-templates.xlsx'}
           </button>
@@ -317,12 +424,10 @@ export default function DataPage() {
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Dùng file ② sau khi đã điền, hoặc file ① nếu muốn khôi phục</p>
             </div>
           </div>
-
           <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'var(--warning-bg)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--warning)' }}>⚠️ Lưu ý trước khi import:</p>
-            <p className="text-xs" style={{ color: 'var(--warning)' }}>Dữ liệu import sẽ ghi đè nếu trùng ngày (body metrics, sleep, nutrition). Các buổi chạy sẽ được thêm mới, tự động bỏ qua nếu đã tồn tại.</p>
+            <p className="text-xs" style={{ color: 'var(--warning)' }}>Dữ liệu import sẽ ghi đè nếu trùng ngày (body metrics, sleep, nutrition). Các buổi chạy sẽ được thêm mới, tự động bỏ qua nếu đã tồn tại. Sheet Workout (Session Ref) hiện chỉ được KIỂM TRA, chưa được ghi vào hệ thống.</p>
           </div>
-
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" />
           <button onClick={() => fileRef.current?.click()} disabled={importing} className="btn-primary">
             {importing ? '⏳ Đang xử lý...' : '⬆️ Chọn file Excel để import'}
@@ -359,13 +464,13 @@ export default function DataPage() {
               </div>
             </div>
 
-            {/* Errors detail */}
+            {/* Errors detail — chỉ còn lỗi từ Body/Sleep/Running/Nutrition, không còn Workout */}
             {importResult.results.some(r => r.errors.length > 0) && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold" style={{ color: 'var(--danger)' }}>Chi tiết lỗi:</p>
                 {importResult.results.flatMap(r => r.errors).map((err, i) => (
                   <div key={i} className="rounded-xl px-3 py-2 text-xs" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
-                    <strong>Sheet {err.sheet} · Dòng {err.row}</strong>{err.field ? ` · ${err.field}` : ''}: {err.message}
+                    <strong>Sheet {err.sheet}{err.row !== undefined ? ` · Dòng ${err.row}` : ''}</strong>{err.field ? ` · ${err.field}` : ''}: {err.message}
                   </div>
                 ))}
               </div>
@@ -376,6 +481,44 @@ export default function DataPage() {
                 ✓ Import thành công! Vào Dashboard để xem dữ liệu mới.
               </p>
             )}
+          </div>
+        )}
+
+        {/* ADR-008 — Bước 2: kết quả validate Workout, độc lập với importResult */}
+        {workoutValidation !== null && (
+          <div className="card p-4 space-y-3 fade-in">
+            <p className="font-bold" style={{ color: 'var(--text)' }}>Kiểm tra dữ liệu Workout (chưa import)</p>
+            <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+              Bước hiện tại chỉ kiểm tra tính hợp lệ giữa 3 sheet Workout — chưa ghi vào hệ thống.
+            </p>
+            {workoutValidation.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--success)' }}>✓ Không phát hiện lỗi.</p>
+            ) : (() => {
+              const flatErrors = workoutValidation.filter(e => e.sessionRef === undefined)
+              const groupedMap = new Map<number, ValidationError[]>()
+              for (const e of workoutValidation) {
+                if (e.sessionRef === undefined) continue
+                if (!groupedMap.has(e.sessionRef)) groupedMap.set(e.sessionRef, [])
+                groupedMap.get(e.sessionRef)!.push(e)
+              }
+              return (
+                <div className="space-y-2">
+                  {[...groupedMap.entries()].map(([ref, errs]) => (
+                    <div key={`ref-${ref}`} className="rounded-xl px-3 py-2 text-xs space-y-1" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+                      <strong>Session Ref {ref}</strong>
+                      {errs.map((err, i) => (
+                        <p key={i}>• {err.sheet}{err.row !== undefined ? ` · Dòng ${err.row}` : ''}{err.field ? ` · ${err.field}` : ''}: {err.message}</p>
+                      ))}
+                    </div>
+                  ))}
+                  {flatErrors.map((err, i) => (
+                    <div key={`flat-${i}`} className="rounded-xl px-3 py-2 text-xs" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+                      <strong>Sheet {err.sheet}{err.row !== undefined ? ` · Dòng ${err.row}` : ''}</strong>{err.field ? ` · ${err.field}` : ''}: {err.message}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
