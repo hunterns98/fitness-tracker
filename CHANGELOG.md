@@ -5,97 +5,80 @@ Format: [Version] — Release Name — Date
 
 ---
 
-## [Unreleased] — Sprint 4: Workout Import/Export (ADR-008)
+## [Unreleased] — Sprint 4: Data Management
+
+### ✅ ADR-008 — Workout Import/Export: IMPLEMENTATION COMPLETE (2026-07-28)
+
+Toàn bộ Manual Test Checklist (Bước 1, 2, 3) đã PASS, bao gồm regression cho
+Body/Sleep/Running/Nutrition. Quy trình đầy đủ: Investigation → Root Cause
+Analysis (KL-01, tách riêng) → Architecture Review (D1–D6 + phụ lục D3b) →
+UX Design → Approval → Implementation (3 bước) → Manual Test → CHANGELOG.
+Không có bước nào bị bỏ qua.
+
+**Kết quả xác nhận qua test thật (không phải suy đoán):**
+- Import `fitness-data.xlsx` → tạo đúng 14 session mới (khớp 14 Session Ref).
+- Import lại cùng file lần 2 → `Đã tạo: 0`, `Trùng: 14` — `import_hash` +
+  bắt lỗi Postgres `23505` chặn duplicate chính xác, không cần SELECT-trước.
+- Sửa 1 giá trị trong file → chỉ đúng session đó được tạo mới (hash đổi),
+  các session khác vẫn bị chặn trùng — đúng hành vi D2+D4 đã thiết kế.
+- Summary page hiển thị đúng target snapshot (`session_exercises`) và
+  workout sets sau khi import.
+- 5 session "legacy" (từng dùng fallback `template_exercises`, ADR-001) sau
+  khi import lại đã có `session_exercises` THẬT trong DB — tự chuyển sang
+  mô hình snapshot mới, không cần migration (đúng phụ lục D3b).
+- Compensating delete (Application-layer, CASCADE có sẵn trong schema) hoạt
+  động đúng — không để lại session mồ côi khi 1 bước insert thất bại.
+
+**Quyết định kiến trúc đã khóa (ADR-008, xem đầy đủ ở `docs/ARCHITECTURE.md`):**
+D1 (exercise_id làm identity) · D2 (Import luôn tạo session mới) · D3 + D3b
+(session_ref nối 3 sheet, derive cho legacy session) · D4 (import_hash
+full-content trên sets, bắt 23505) · D5 (cho phép import exercise đã
+archived) · D6 (Compensating delete Application-layer, không PostgreSQL
+Function/RPC/transaction).
 
 ### Bước 3/3 — Workout Import: insert thật + compensating delete
-- **File mới** `app/api/import/workout/route.ts`: nhận danh sách session đã
-  validate từ client (`{ sessions: [...] }`), insert `workout_sessions`
-  (ADR-008 D2: luôn tạo mới, không update session đang tồn tại) kèm
-  `import_hash` (D4: `sha256(date+type+name_override+canonical sets)`,
-  không salt). Bắt lỗi Postgres `23505` (unique violation) thay vì
-  SELECT-trước-rồi-check.
-- Insert `session_exercises` rồi `workout_sets` tuần tự sau khi session tạo
-  thành công. Nếu 1 trong 2 bước fail → compensating delete: xóa
-  `workout_sessions` (CASCADE có sẵn trong schema tự dọn 2 bảng con —
-  D6, Application-layer, không dùng PostgreSQL Function/RPC/transaction)
-  → đánh dấu session đó `failed` → tiếp tục session_ref kế tiếp, không
-  dừng toàn bộ import.
-- `app/data/page.tsx`: tách `importFromFile()` (Body/Sleep/Running/Nutrition)
-  khỏi luồng Workout hoàn toàn mới `importWorkoutData()`. Thêm
-  `groupWorkoutRows()` dùng chung giữa validate (Bước 2) và build payload
-  insert (Bước 3), tránh trùng lặp logic gộp theo `session_ref`.
-- UI: thay khối "Kiểm tra dữ liệu Workout (chưa import)" bằng khối
-  **"Kết quả import Workout"** — 4 trạng thái mỗi session: Đã tạo /
-  Trùng (skipped_duplicate) / Lỗi dữ liệu (skipped_invalid) / Thất bại.
-- **Fix kỹ thuật (không phải quyết định ADR):** cột "Ghi chú" ở sheet
-  "Session Exercises" bị field-map dùng chung (`ghi_chu → note`, số ít)
-  normalize sai so với cột thật `notes` (số nhiều) trong bảng
-  `session_exercises`. Đã sửa trong `buildValidWorkoutSessions()`: đọc
-  đúng key đã normalize (`note`) rồi gán vào field `notes` của payload.
+- **File mới** `app/api/import/workout/route.ts`: insert `workout_sessions`
+  (D2, D4) → bắt `23505` → insert `session_exercises` + `workout_sets` →
+  compensating delete qua CASCADE nếu fail (D6) → tiếp tục session_ref kế tiếp.
+- `app/data/page.tsx`: `importWorkoutData()` mới, tách hoàn toàn khỏi
+  `importFromFile()`. Thêm `groupWorkoutRows()` dùng chung giữa validate và
+  build payload insert. UI: khối "Kết quả import Workout" (4 trạng thái:
+  Đã tạo / Trùng / Lỗi dữ liệu / Thất bại).
+- Fix kỹ thuật: cột "Ghi chú" ở sheet Session Exercises normalize thành
+  `note` (field-map dùng chung) nhưng schema DB dùng `notes` — đã map đúng
+  lại trong `buildValidWorkoutSessions()`.
 - Không ảnh hưởng `app/api/import/route.ts` và luồng Body/Sleep/Running/
-  Nutrition — hành vi giữ nguyên 100%.
+  Nutrition — regression test xác nhận PASS.
 
 ### ADR-008 phụ lục D3b — Derive session_exercises cho Legacy Session
-- Fact-check runtime (2026-07-28) xác nhận: 5/14 session type=strength
-  (36%, tạo trước Sprint 3 Phase 2.5) có `session_exercises = 0` dòng thật
-  trong DB — gây toàn bộ Session Ref của các session này báo lỗi "orphan"
-  khi validate Workout Import. Xác nhận qua đối chiếu `count(*)` DB thật =
-  số dòng file Excel = 69, khớp tuyệt đối — không phải bug export/import,
-  mà là giới hạn dữ liệu lịch sử (session dùng fallback `template_exercises`
-  theo ADR-001, chưa từng có snapshot thật).
-- `app/api/export/route.ts`: khi export sheet "Session Exercises", nếu 1
-  session type=strength không có `session_exercises` thật nhưng có
-  `template_id`, derive dữ liệu tương đương từ `template_exercises JOIN
-  exercises` (cùng logic fallback mà `GET /api/session-exercises` Path 2
-  dùng cho hiển thị). Session có `session_exercises` thật giữ nguyên.
-- Import: không đổi — session phục hồi từ file sẽ tự động có
-  `session_exercises` thật ngay khi tạo (do Import luôn tạo session mới —
-  D2), tự chuyển sang mô hình snapshot mới mà không cần migration.
-- `docs/ARCHITECTURE.md`: thêm phụ lục D3b vào ADR-008 (không mở lại ADR).
+- Fact-check runtime xác nhận 5/14 session type=strength (36%, tạo trước
+  Sprint 3 Phase 2.5) có `session_exercises = 0` dòng thật — không phải bug,
+  là giới hạn dữ liệu lịch sử (fallback ADR-001 chưa từng ghi snapshot).
+- `app/api/export/route.ts`: derive session_exercises từ `template_exercises
+  JOIN exercises` cho các session này khi export (cùng logic fallback của
+  `GET /api/session-exercises` Path 2).
 
 ### Bước 2/3 — SHEET_MAP nhận diện Workout, validation session_ref
-- Nhận diện 3 sheet "Workout Sessions"/"Session Exercises"/"Workout Sets"
-  trong luồng import. Gộp dữ liệu theo `session_ref` (ADR-008 D3), validate
-  referential integrity (D1: `exercise_id` phải khớp giữa Session Exercises
-  và Workout Sets cùng session_ref; orphan → skip toàn bộ session, báo lỗi
-  gộp theo session_ref — đúng UX Design đã chốt).
-- Refactor theo review: tách kết quả validate Workout khỏi `ImportResult[]`
-  chung (không còn `results.push({ imported: 0, errors })` giả); tách toàn
-  bộ logic Workout validation thành hàm riêng, không nằm trong
-  `importFromFile()`; bỏ `row: 0` cho lỗi cấp session (dùng `row?: number`,
-  UI chỉ hiện "Dòng X" khi có giá trị thật); thêm TODO cho validation sẽ
-  bổ sung sau (display_order, target_sets, target_reps, set_number).
-- Chưa gọi API insert ở bước này — chỉ validate, hiển thị kết quả kiểm tra.
+- Nhận diện 3 sheet Workout, gộp theo `session_ref`, validate referential
+  integrity (D1), orphan → skip toàn bộ session, báo lỗi gộp theo session.
+- Refactor: tách kết quả validate khỏi `ImportResult[]` chung; tách logic
+  thành hàm riêng; bỏ `row: 0` cho lỗi cấp session; thêm TODO cho validation
+  giá trị field (chưa cấp thiết cho Bước 3).
 
 ### Bước 1/3 — Export: session_ref, sheet "Session Exercises", exercise_id
-- `app/api/export/route.ts`: thêm query `session_exercises`; sinh
-  `session_ref` (số thứ tự, chỉ cho session type='strength') làm khóa nối
-  giữa các sheet lúc import (session_id thật chưa tồn tại tại thời điểm
-  import — ADR-008 D3).
-- Sheet "Workout Sessions": thêm cột `Session Ref` (trống với type=run/other).
-- Sheet mới "Session Exercises": target_sets/target_reps/display_order/notes
-  theo session_ref.
-- Sheet "Workout Sets": đổi `Session ID` (UUID) → `Session Ref` (số); thêm
-  cột `Exercise ID` (ADR-008 D1 — identity chính thức để import match,
-  không bao giờ theo tên bài).
+- Thêm `session_ref`, sheet mới "Session Exercises", cột `Exercise ID` ở
+  Workout Sets (D1, D3).
 
-### Fix — Hoàn tất split exportToExcel (Task 6 dở dang từ Sprint 3, không thuộc ADR-008)
-- `app/data/page.tsx`: tách `exportToExcel()` (hàm cũ, gộp chung data+template,
-  còn sót lại từ Task 6 dở dang) thành `exportDataToExcel()` (chỉ dữ liệu
-  thật) + `exportImportTemplates()` (chỉ sheet mẫu). UI đã gọi 2 tên này từ
-  Task 6 nhưng hàm thực tế chưa được tách — gây lỗi build
-  "Cannot find name 'exportDataToExcel'". Không đổi hành vi, không đổi nội
-  dung sheet — chỉ tách đúng như UI đã kỳ vọng.
+### Fix — Hoàn tất split exportToExcel (Task 6 dở dang từ Sprint 3)
+- Tách `exportToExcel()` cũ thành `exportDataToExcel()` + `exportImportTemplates()`
+  — sửa lỗi build do UI đã gọi 2 tên mới nhưng hàm chưa được tách.
 
-### Architecture
-- **ADR-008 — Workout Import/Export**: chốt qua Investigation → Architecture
-  Review → UX Design → Approval (2026-07-28). Quyết định chính: `exercise_id`
-  làm identity (D1); Import luôn tạo session mới, không update (D2);
-  `session_ref` nối 3 sheet, sinh tại thời điểm export (D3, + phụ lục D3b);
-  `import_hash` full-content trên toàn bộ sets, bắt `23505` thay vì
-  SELECT-trước (D4); cho phép import liên kết exercise đã archived (D5);
-  Compensating delete ở Application layer, không PostgreSQL Function/RPC/
-  transaction (D6). Xem chi tiết đầy đủ ở `docs/ARCHITECTURE.md`.
+### Còn lại trong Sprint 4 (chưa làm — xem mục "Bước tiếp theo" bên dưới)
+- Running: chuyển duplicate detection sang `import_hash` (TD-01, ADR-006 —
+  cột đã tồn tại production nhưng `app/api/import/route.ts` vẫn dùng
+  `(date + name_override)` ở application layer).
+- Nutrition: đưa ra khỏi trạng thái Experimental — validate và test đầy đủ
+  (S2-07, Sprint 2 Planning).
 
 ---
 
