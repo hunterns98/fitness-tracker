@@ -6,7 +6,27 @@ Format: [Version] — Release Name — Date
 ---
 
 ## [Unreleased] — Sprint 4: Data Management
+### ✅ TD-01 — Running Import: chuyển sang DB-layer duplicate detection (2026-08-01)
 
+**Scope đã khóa (Sprint 4.1):**
+1. Running import: bỏ SELECT-trước-rồi-filter, chuyển sang per-row INSERT +
+   catch Postgres `23505`, cùng pattern đã dùng cho Workout Import (ADR-008 D4).
+2. Giữ nguyên: công thức `import_hash` (byte-identical với 22 session lịch sử
+   đã backfill), response shape API (`imported`, `skipped`, `errors`, `message`).
+3. Fix UI: `app/data/page.tsx` `importFromFile()` — truyền `result.skipped`
+   vào `ImportResult` (trước đây bị bỏ sót, khiến card "Bỏ qua (trùng)" luôn
+   hiển thị 0 dù backend trả đúng).
+
+**Files:**
+- `app/api/import/route.ts` — nhánh `sheet === 'running'` viết lại hoàn toàn
+  phần insert (không đổi `computeImportHash`, không đổi validate).
+- `app/data/page.tsx` — 1 dòng trong `importFromFile()`.
+
+**Không đổi:** schema DB (cột + unique index `import_hash` đã tồn tại từ
+Sprint 3 Phase 0, dùng chung với Workout), validation logic, các nhánh sheet
+khác (`body_metrics`, `sleep_recovery`, `nutrition`).
+
+**Đóng TD-01** (Sprint 2 Retrospective, Technical Debt table).
 ### ✅ ADR-008 — Workout Import/Export: IMPLEMENTATION COMPLETE (2026-07-28)
 
 Toàn bộ Manual Test Checklist (Bước 1, 2, 3) đã PASS, bao gồm regression cho
