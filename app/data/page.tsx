@@ -423,7 +423,11 @@ async function importFromFile(file: File): Promise<{ results: ImportResult[]; to
       results.push({ imported: result.valid_count ?? 0, errors: result.errors ?? [] })
       totalErrors += (result.errors ?? []).length
     } else if (res.ok) {
-      results.push({ imported: result.imported, errors: [] })
+      // TD-01 (Sprint 4.1): truyền result.skipped vào ImportResult — trước đây
+      // field này bị bỏ sót, khiến card "Bỏ qua (trùng)" ở UI luôn cộng 0 dù
+      // backend (Running) trả skipped đúng. Chỉ ảnh hưởng hiển thị, không đổi
+      // API/behavior.
+      results.push({ imported: result.imported, skipped: result.skipped, errors: [] })
       totalImported += result.imported
     } else {
       results.push({ imported: 0, errors: [{ sheet: sheetName, row: 0, field: '', message: result.error }] })
