@@ -25,6 +25,8 @@ function parseStr(v: any): string | null {
 // ADR-011 canonical serialization for import_hash — MUST stay byte-identical
 // to the SQL formula used in supabase/sprint3_backfill_import_hash.sql.
 // Verified 2026-07-17: matches all 22 backfilled historical sessions exactly.
+// TD-01 (Sprint 4.1): công thức này KHÔNG đổi — chỉ đổi cơ chế chống trùng
+// (per-row INSERT + catch 23505 thay cho SELECT-trước-rồi-filter).
 function computeImportHash(input: {
   date: string
   type: string
@@ -199,16 +201,25 @@ export async function POST(req: NextRequest) {
       result = await supabase.from('sleep_recovery_logs').upsert(validation.valid, { onConflict: 'date' })
     } else if (sheet === 'running') {
       // ============================================================
-      // Task 3 (Sprint 3 Phase 0.2) — import_hash is the SOLE dedup
-      // mechanism for Running import. No fallback to
-      // (date, name_override) is kept — per explicit decision.
-      // Ref: ADR-006, ADR-008, ADR-011.
+      // TD-01 (Sprint 4.1) — Running import chuyển từ Application-layer
+      // pre-check (SELECT existing hashes -> filter -> bulk INSERT) sang
+      // DB-layer constraint-catch (per-row INSERT -> catch Postgres 23505),
+      // đúng pattern đã dùng cho Workout Import (app/api/workout/route.ts)
+      // và đúng tinh thần ADR-006: "Application layer không chịu trách
+      // nhiệm chống duplicate. Database phải đảm bảo."
+      //
+      // Công thức import_hash KHÔNG đổi (xem computeImportHash ở trên).
+      //
+      // Insert TỪNG ROW, không bulk: Postgres bulk INSERT là atomic — nếu
+      // gộp nhiều rows trong 1 câu lệnh, chỉ cần 1 row bị 23505 sẽ làm cả
+      // batch fail, phá vỡ hành vi hiện có "dòng trùng -> skip, dòng mới ->
+      // vẫn import". Per-row insert giữ đúng hành vi này.
       // ============================================================
 
-      // Compute import_hash for every valid row. distance_km / duration_seconds
-      // are required for hashing — rows missing either are rejected as
-      // validation errors rather than hashed with placeholder values,
-      // since that would risk hash collisions across unrelated sessions.
+      // Compute import_hash cho từng row hợp lệ. distance_km / duration_seconds
+      // là bắt buộc để hash — row thiếu 1 trong 2 bị từ chối ở bước validate
+      // (không hash với giá trị placeholder, tránh rủi ro trùng hash giữa
+      // các session không liên quan).
       const rowsWithHash: (ImportRow & { import_hash: string })[] = []
       const hashErrors: ValidationError[] = []
 
@@ -238,43 +249,44 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ errors: hashErrors, valid_count: rowsWithHash.length }, { status: 422 })
       }
 
-      // Look up which of these hashes already exist in DB
-      const hashes = rowsWithHash.map(r => r.import_hash)
-      const { data: existing, error: lookupError } = await supabase
-        .from('workout_sessions')
-        .select('import_hash')
-        .eq('type', 'run')
-        .in('import_hash', hashes)
+      // Per-row INSERT — DB (unique index partial trên import_hash, xem
+      // supabase/sprint2_migration_patch1.sql-tương-đương cho workout_sessions)
+      // là nguồn sự thật duy nhất cho duplicate detection. Không SELECT-trước.
+      let imported = 0
+      let skipped = 0
+      const insertErrors: ValidationError[] = []
 
-      if (lookupError) {
-        return NextResponse.json({ error: lookupError.message }, { status: 500 })
+      for (let i = 0; i < rowsWithHash.length; i++) {
+        const row = rowsWithHash[i]
+        const { error: insertError } = await supabase.from('workout_sessions').insert(row)
+
+        if (insertError) {
+          if (insertError.code === '23505') {
+            // Unique violation trên import_hash -> đã tồn tại, skip, KHÔNG coi là lỗi
+            skipped++
+          } else {
+            // Lỗi khác (không phải duplicate) -> ghi nhận, không chặn các row còn lại
+            insertErrors.push({
+              sheet: 'Running',
+              row: i + 2,
+              field: '',
+              message: insertError.message,
+            })
+          }
+          continue
+        }
+        imported++
       }
 
-      const existingHashes = new Set((existing ?? []).map(r => r.import_hash).filter(Boolean))
-
-      const toInsert = rowsWithHash.filter(r => !existingHashes.has(r.import_hash))
-      const skipped = rowsWithHash.length - toInsert.length
-
-      if (toInsert.length === 0) {
-        return NextResponse.json({
-          imported: 0,
-          skipped,
-          errors: [],
-          message: `Tất cả ${skipped} buổi chạy đã tồn tại trong database (import_hash trùng) — không có gì được thêm.`
-        })
-      }
-
-      result = await supabase.from('workout_sessions').insert(toInsert)
-
-      if (result?.error) {
-        return NextResponse.json({ error: result.error.message }, { status: 500 })
+      if (insertErrors.length > 0) {
+        return NextResponse.json({ errors: insertErrors, valid_count: imported }, { status: 422 })
       }
 
       return NextResponse.json({
-        imported: toInsert.length,
+        imported,
         skipped,
         errors: [],
-        message: skipped > 0 ? `Đã import ${toInsert.length} buổi. Bỏ qua ${skipped} buổi đã tồn tại (import_hash trùng).` : undefined
+        message: skipped > 0 ? `Đã import ${imported} buổi. Bỏ qua ${skipped} buổi đã tồn tại (import_hash trùng).` : undefined
       })
     } else if (sheet === 'nutrition') {
       result = await supabase.from('nutrition_logs').upsert(validation.valid, { onConflict: 'date' })
