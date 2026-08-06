@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { formatDuration } from '@/lib/utils'
 import { ExercisePicker } from '@/components/ExercisePicker'
+import { getMuscleIllustration } from '@/lib/muscleIllustrations'
 
 type Exercise = {
   id: string; name: string; muscle_group: string
@@ -32,6 +33,73 @@ function Stepper({ label, value, onChange, step = 1, min = 0 }: {
         <button className="step-btn" onPointerDown={e => { e.preventDefault(); onChange(Math.round((value + step) * 10) / 10) }}>+</button>
       </div>
     </div>
+  )
+}
+
+// ── Exercise Strip (Sprint 5.1) ─────────────────────────────────
+// Thay thế header cũ (card lớn: tên + mục tiêu + technique_cue dạng
+// đoạn văn). Nguyên tắc: Logging là nhân vật chính, Strip không được
+// đẩy vùng nhập set xuống quá nhiều — chiều cao giới hạn ~64-72px,
+// text 1 dòng, không wrap.
+//
+// Toàn bộ Strip là MỘT vùng bấm duy nhất (quyết định UX #3/#4) — trừ
+// nút ✏️ Sửa bài tập, vốn là 1 hành động khác biệt đã tồn tại từ
+// trước (Workout Editor), dùng stopPropagation để không kích hoạt
+// tap-target chính khi bấm riêng nút này.
+//
+// onClick chính hiện là placeholder — Exercise Detail Bottom Sheet
+// sẽ được implement ở Sprint 5.2. Không xây nội dung sheet tạm thời
+// ở đây để tránh code phải viết lại (đúng nguyên tắc không vượt
+// phạm vi milestone).
+function ExerciseStrip({
+  exercise, index, total, usesFallback, onOpenEditor,
+}: {
+  exercise: Exercise; index: number; total: number; usesFallback: boolean
+  onOpenEditor: () => void
+}) {
+  const illustrationSrc = getMuscleIllustration(exercise.muscle_group)
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        // TODO (Sprint 5.2): mở Exercise Detail Bottom Sheet tại đây.
+      }}
+      className="card w-full p-3 flex items-center gap-3 text-left transition-all"
+      style={{ minHeight: 64, maxHeight: 72 }}
+    >
+      <img
+        src={illustrationSrc}
+        alt={exercise.muscle_group}
+        className="w-12 h-12 rounded-xl shrink-0"
+        style={{ background: 'var(--brand-light)' }}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm truncate" style={{ color: 'var(--text)' }}>
+          {exercise.name}
+        </p>
+        <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
+          {exercise.current_weight_kg ?? '?'}kg · {exercise.target_sets ?? 4} sets · {exercise.target_reps ?? '?'} reps
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{index + 1}/{total}</span>
+        {!usesFallback && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={e => { e.stopPropagation(); onOpenEditor() }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onOpenEditor() } }}
+            title="Sửa bài tập"
+            className="text-sm px-1"
+            style={{ color: 'var(--brand)' }}
+          >
+            ✏️
+          </span>
+        )}
+        <span style={{ color: 'var(--text-3)' }}>›</span>
+      </div>
+    </button>
   )
 }
 
@@ -298,25 +366,14 @@ export default function WorkoutPage() {
 
         {ex && (
           <>
-            {/* Exercise header */}
-            <div className="card p-4">
-              <div className="flex items-baseline justify-between mb-1">
-                <h2 className="text-lg font-bold" style={{ color: 'var(--text)' }}>{ex.name}</h2>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>{exIdx + 1}/{exercises.length}</span>
-                  {!usesFallback && (
-                    <button onClick={openEditor} title="Sửa bài tập"
-                      className="text-sm" style={{ color: 'var(--brand)' }}>✏️</button>
-                  )}
-                </div>
-              </div>
-              <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                Mục tiêu: {ex.current_weight_kg ?? '?'}kg · {ex.target_sets ?? 4} sets · {ex.target_reps ?? '?'} reps
-              </p>
-              {ex.technique_cue && (
-                <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--brand-dark)' }}>{ex.technique_cue}</p>
-              )}
-            </div>
+            {/* Exercise Strip (Sprint 5.1) — thay cho header cũ */}
+            <ExerciseStrip
+              exercise={ex}
+              index={exIdx}
+              total={exercises.length}
+              usesFallback={usesFallback}
+              onOpenEditor={openEditor}
+            />
 
             {/* Previous performance */}
             {prevSets.length > 0 && (
