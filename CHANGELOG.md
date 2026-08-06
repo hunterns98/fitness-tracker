@@ -2,7 +2,27 @@
 
 All notable changes to Fitness Tracker are documented here.
 Format: [Version] — Release Name — Date
+### 🚧 Sprint 5.2 — Exercise Detail Bottom Sheet (2026-08-01)
 
+**Scope (Architecture Review đã khóa):** 0 migration DB. 1 thay đổi additive.
+
+- **Sửa (additive):** `app/api/session-exercises/route.ts` — GET (cả 2 path:
+  session_exercises thật + fallback template_exercises) và POST bổ sung
+  field `common_mistakes` vào SELECT + response. Không đổi shape cũ, không
+  đổi field nào khác, không đổi contract 409/validation hiện có.
+- **Mới:** `components/ExerciseDetailSheet.tsx` — Bottom Sheet hiển thị
+  đúng 5 phần theo thứ tự đã khóa: Hero Image → Muscle Highlight →
+  Technique → Common Mistakes → Previous Performance. KHÔNG hiển thị
+  Difficulty/Equipment/Movement Pattern (khác trang `/exercises/[id]` đầy
+  đủ). Previous Performance dạng compact chip (`7kg×15`), không table.
+- **Sửa:** `app/workout/[sessionId]/page.tsx` — `ExerciseStrip.onClick` giờ
+  mở `ExerciseDetailSheet` (trước là placeholder). Thêm state
+  `showDetailSheet`, tự đóng sheet khi đổi bài tập (`exIdx` đổi) để tránh
+  hiển thị sai nội dung. `Exercise` type thêm `common_mistakes?`.
+- **Kiến trúc:** `heroImageSrc` và `highlightImageSrc` tính riêng biệt
+  trong `ExerciseDetailSheet` (2 biến rời, không gộp `ExercisePackage`) —
+  đúng quyết định Architecture Review Sprint 5.
+- **Không đổi:** schema DB, các API khác, Workout Editor, luồng nhập set.
 ---
 ### 🚧 Sprint 5.1 — Exercise Strip + Illustration Package (2026-08-01)
 
