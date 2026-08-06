@@ -16,6 +16,12 @@ export const dynamic = 'force-dynamic'
 // has_logged_sets (bổ sung — additive, không đổi shape cũ):
 //   Cho biết bài này đã có workout_sets log trong session chưa, để client disable nút xóa
 //   ngay từ đầu thay vì phải confirm rồi mới nhận lỗi 409 từ DELETE.
+//
+// common_mistakes (Sprint 5.2 — bổ sung additive, không đổi shape cũ):
+//   Cần cho Exercise Detail Bottom Sheet (section "Lỗi thường gặp"). Trước đây field này
+//   chỉ có trong GET /api/exercises/[id] (trang thư viện), không có trong luồng Workout —
+//   thêm vào đây để Bottom Sheet không phải gọi thêm 1 API riêng khi mở (giữ nguyên tắc
+//   "logging/xem chi tiết đều phải nhanh", đúng Architecture Review Sprint 5.2).
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const sessionId = searchParams.get('session_id')
@@ -40,7 +46,8 @@ export async function GET(req: NextRequest) {
         name,
         muscle_group,
         current_weight_kg,
-        technique_cue
+        technique_cue,
+        common_mistakes
       )
     `)
     .eq('session_id', sessionId)
@@ -51,7 +58,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (sessionExercises && sessionExercises.length > 0) {
-    // ── MỚI: lấy danh sách exercise_id đã có set log trong session này ──
+    // ── lấy danh sách exercise_id đã có set log trong session này ──
     const { data: loggedSets } = await supabase
       .from('workout_sets')
       .select('exercise_id')
@@ -69,11 +76,12 @@ export async function GET(req: NextRequest) {
         muscle_group: ex?.muscle_group ?? null,
         current_weight_kg: ex?.current_weight_kg ?? null,
         technique_cue: ex?.technique_cue ?? null,
+        common_mistakes: ex?.common_mistakes ?? null, // ← Sprint 5.2 (additive)
         // target từ snapshot (có thể override so với template gốc)
         target_sets: se.target_sets,
         target_reps: se.target_reps,
         notes: se.notes,
-        has_logged_sets: loggedExerciseIds.has(se.exercise_id), // ← MỚI (additive)
+        has_logged_sets: loggedExerciseIds.has(se.exercise_id),
         _source: 'session_exercises',
       }
     })
@@ -94,7 +102,7 @@ export async function GET(req: NextRequest) {
 
   const { data: templateExercises, error: teError } = await supabase
     .from('template_exercises')
-    .select('display_order, exercise:exercises(id, name, muscle_group, current_weight_kg, target_sets, target_reps, technique_cue)')
+    .select('display_order, exercise:exercises(id, name, muscle_group, current_weight_kg, target_sets, target_reps, technique_cue, common_mistakes)')
     .eq('template_id', session.template_id)
     .order('display_order')
 
@@ -190,7 +198,8 @@ export async function POST(req: NextRequest) {
         name,
         muscle_group,
         current_weight_kg,
-        technique_cue
+        technique_cue,
+        common_mistakes
       )
     `)
     .single()
@@ -207,6 +216,7 @@ export async function POST(req: NextRequest) {
     muscle_group: ex?.muscle_group ?? null,
     current_weight_kg: ex?.current_weight_kg ?? null,
     technique_cue: ex?.technique_cue ?? null,
+    common_mistakes: ex?.common_mistakes ?? null, // ← Sprint 5.2 (additive)
     target_sets: inserted.target_sets,
     target_reps: inserted.target_reps,
     notes: inserted.notes,
