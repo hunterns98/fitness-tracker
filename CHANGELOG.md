@@ -4,7 +4,30 @@ All notable changes to Fitness Tracker are documented here.
 Format: [Version] — Release Name — Date
 
 ---
+### 🚧 Sprint 5.1 — Exercise Strip + Illustration Package (2026-08-01)
 
+**Scope (Architecture Review đã khóa):** Không migration DB, không API mới.
+
+- **Mới:** `public/muscle-illustrations/*.svg` — 9 illustration tĩnh theo
+  `muscle_group` (Ngực, Lưng, Vai, Vai sau, Tay trước, Tay sau, Cẳng tay,
+  Chân, Core), đóng gói cùng source code, không qua Storage/upload.
+- **Mới:** `lib/muscleIllustrations.ts` — hàm `getMuscleIllustration()`,
+  map `muscle_group → đường dẫn illustration`, có fallback an toàn.
+- **Sửa:** `app/workout/[sessionId]/page.tsx` — thay "Exercise header" (card
+  lớn: tên + mục tiêu + `technique_cue` dạng đoạn văn) bằng **Exercise
+  Strip** (component mới, cùng file): thumbnail illustration + tên + mục
+  tiêu rút gọn 1 dòng, cao 64-72px, toàn vùng là 1 tap target (trừ nút ✏️
+  Sửa bài tập, dùng `stopPropagation`). `technique_cue` không còn hiển thị
+  trực tiếp ở Workout Screen — sẽ chuyển vào Exercise Detail Bottom Sheet
+  (Sprint 5.2).
+- **Không đổi:** Previous Performance (giữ nguyên vị trí/hình thức), toàn
+  bộ vùng nhập Set, Progressive overload hint, bottom nav, Workout Editor.
+- **Kiến trúc:** dùng 2 biến rời (`heroImageSrc`/nơi gọi), không tạo type
+  `ExercisePackage` — quyết định Architecture Review, tránh thiết kế trước
+  nhu cầu Sprint 7.
+
+**TODO ghi rõ trong code:** `onClick` của Exercise Strip hiện là placeholder
+(không mở gì) — Exercise Detail Bottom Sheet implement ở Sprint 5.2.
 ## [Unreleased] — Sprint 4: Data Management
 ### ✅ TD-01 — Running Import: chuyển sang DB-layer duplicate detection (2026-08-01)
 
