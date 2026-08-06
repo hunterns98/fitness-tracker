@@ -4,11 +4,13 @@ import { useParams, useRouter } from 'next/navigation'
 import { formatDuration } from '@/lib/utils'
 import { ExercisePicker } from '@/components/ExercisePicker'
 import { getMuscleIllustration } from '@/lib/muscleIllustrations'
+import { ExerciseDetailSheet } from '@/components/ExerciseDetailSheet'
 
 type Exercise = {
   id: string; name: string; muscle_group: string
   current_weight_kg: number | null; target_reps: string | null
   target_sets: number | null; technique_cue: string | null
+  common_mistakes?: string | null // Sprint 5.2 (additive)
   session_exercise_id?: string
   has_logged_sets?: boolean
   _source?: 'session_exercises' | 'template_fallback'
@@ -47,24 +49,19 @@ function Stepper({ label, value, onChange, step = 1, min = 0 }: {
 // trước (Workout Editor), dùng stopPropagation để không kích hoạt
 // tap-target chính khi bấm riêng nút này.
 //
-// onClick chính hiện là placeholder — Exercise Detail Bottom Sheet
-// sẽ được implement ở Sprint 5.2. Không xây nội dung sheet tạm thời
-// ở đây để tránh code phải viết lại (đúng nguyên tắc không vượt
-// phạm vi milestone).
+// onClick chính (Sprint 5.2): mở Exercise Detail Bottom Sheet.
 function ExerciseStrip({
-  exercise, index, total, usesFallback, onOpenEditor,
+  exercise, index, total, usesFallback, onOpenEditor, onOpenDetail,
 }: {
   exercise: Exercise; index: number; total: number; usesFallback: boolean
-  onOpenEditor: () => void
+  onOpenEditor: () => void; onOpenDetail: () => void
 }) {
   const illustrationSrc = getMuscleIllustration(exercise.muscle_group)
 
   return (
     <button
       type="button"
-      onClick={() => {
-        // TODO (Sprint 5.2): mở Exercise Detail Bottom Sheet tại đây.
-      }}
+      onClick={onOpenDetail}
       className="card w-full p-3 flex items-center gap-3 text-left transition-all"
       style={{ minHeight: 64, maxHeight: 72 }}
     >
@@ -115,6 +112,9 @@ export default function WorkoutPage() {
   const [showFinish, setShowFinish] = useState(false)
   const [finishHours, setFinishHours] = useState(1)
   const [finishMins, setFinishMins] = useState(0)
+
+  // ── Exercise Detail Bottom Sheet state (Sprint 5.2) ─────────
+  const [showDetailSheet, setShowDetailSheet] = useState(false)
 
   // ── Workout Editor state ──────────────────────────────────
   const [showEditor, setShowEditor] = useState(false)
@@ -170,6 +170,13 @@ export default function WorkoutPage() {
     if (!ex) { setPrevSets([]); return }
     fetch(`/api/sets?exercise_id=${ex.id}&session_id=${sessionId}`).then(r => r.json()).then(setPrevSets)
   }, [ex, sessionId])
+
+  // Đổi bài trong lúc sheet đang mở (hiếm khi xảy ra vì sheet che phủ Strip,
+  // nhưng phòng hờ nếu đổi bài bằng dot ở top bar trong khi sheet mở) → đóng
+  // sheet để tránh hiển thị sai nội dung bài cũ.
+  useEffect(() => {
+    setShowDetailSheet(false)
+  }, [exIdx])
 
   const sets = ex ? allSets[ex.id] ?? [] : []
   const activeSetIdx = sets.findIndex(s => !s.saved && !s.editing)
@@ -373,6 +380,7 @@ export default function WorkoutPage() {
               total={exercises.length}
               usesFallback={usesFallback}
               onOpenEditor={openEditor}
+              onOpenDetail={() => setShowDetailSheet(true)}
             />
 
             {/* Previous performance */}
@@ -446,6 +454,20 @@ export default function WorkoutPage() {
             : <button onClick={() => setShowFinish(true)} className="flex-1 btn-primary py-3">Hoàn thành 🎉</button>
           }
         </div>
+      )}
+
+      {/* Exercise Detail Bottom Sheet (Sprint 5.2) */}
+      {showDetailSheet && ex && (
+        <ExerciseDetailSheet
+          exercise={{
+            name: ex.name,
+            muscle_group: ex.muscle_group,
+            technique_cue: ex.technique_cue,
+            common_mistakes: ex.common_mistakes ?? null,
+          }}
+          prevSets={prevSets}
+          onClose={() => setShowDetailSheet(false)}
+        />
       )}
 
       {/* Finish modal */}
