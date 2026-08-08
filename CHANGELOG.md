@@ -2,6 +2,20 @@
 
 All notable changes to Fitness Tracker are documented here.
 Format: [Version] — Release Name — Date
+### ✅ Sprint 5.3 — Polish: Animation chuyển bài (2026-08-01)
+
+**Scope (Architecture Review đã khóa):** 0 DB, 0 API, chỉ CSS transition.
+
+- **Sửa:** `app/workout/[sessionId]/page.tsx` — vùng nội dung phụ thuộc
+  bài tập đang xem (Exercise Strip + Previous Performance + Sets +
+  Overload hint) bọc trong `<div key={ex.id} className="space-y-4 fade-in">`
+  thay vì `<>...</>`. Khi chuyển bài (`ex.id` đổi), React remount vùng
+  này, animation `.fade-in` (đã có sẵn trong `app/globals.css`, dùng
+  chung toàn app — không tạo keyframe/class mới) tự chạy.
+- **Không đổi:** hành vi nút Previous/Next, progress dot, toàn bộ logic
+  nhập set, Exercise Detail Bottom Sheet (Sprint 5.2), Workout Editor.
+
+Đây là milestone cuối của Sprint 5 (Workout Experience).
 ### 🚧 Sprint 5.2 — Exercise Detail Bottom Sheet (2026-08-01)
 
 **Scope (Architecture Review đã khóa):** 0 migration DB. 1 thay đổi additive.
