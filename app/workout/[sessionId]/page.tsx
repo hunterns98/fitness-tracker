@@ -371,8 +371,11 @@ export default function WorkoutPage() {
           </div>
         )}
 
+        {/* key={ex.id} (Sprint 5.3): khi đổi bài, React remount vùng này,
+            animation .fade-in (đã có sẵn trong globals.css, dùng chung
+            toàn app) tự chạy lại — không cần state/timer riêng. */}
         {ex && (
-          <>
+          <div key={ex.id} className="space-y-4 fade-in">
             {/* Exercise Strip (Sprint 5.1) — thay cho header cũ */}
             <ExerciseStrip
               exercise={ex}
@@ -437,7 +440,7 @@ export default function WorkoutPage() {
                 </div>
               )
             })()}
-          </>
+          </div>
         )}
       </div>
 
